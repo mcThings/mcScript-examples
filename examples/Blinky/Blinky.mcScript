@@ -3,7 +3,7 @@
 // Automatically, event driven, low power and very simple
 // 
 Class Demo 
-    Shared Event BlinkRed() RaiseEvent Every 250 milliSeconds
+    Shared Event BlinkRed() RaiseEvent Every 517 milliSeconds
         LedRed = Not LedRed 
     End Event
 End Class
