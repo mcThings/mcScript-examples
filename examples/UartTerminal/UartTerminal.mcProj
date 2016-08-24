@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ProjectName>UartTerminal</ProjectName>
+  <DeviceType>mcMod210</DeviceType>
+  <LastDocumentName>UartTerminal.mcScript</LastDocumentName>
+  <DocumentSettings>
+    <DocumentSetting>
+      <FileSpec>UartTerminal.mcScript</FileSpec>
+      <Row>10</Row>
+      <Col>13</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+  </DocumentSettings>
+</ProjectSetting>

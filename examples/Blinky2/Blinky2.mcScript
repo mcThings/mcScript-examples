@@ -1,0 +1,16 @@
+﻿//
+// This program blinks the two led's for a short time (100mSec) out of
+// sync with each other. Good example of multi-threading with mcScript
+//
+Class Demo 
+    Shared Event BlinkGreen() RaiseEvent Every 2000 milliSeconds
+        LedGreen = True
+        Thread.Sleep(100000)
+        LedGreen = False
+    End Event
+    Shared Event BlinkRed() RaiseEvent Every 1500 milliSeconds
+        LedRed = True
+        Thread.Sleep(100000)
+        LedRed = False
+    End Event
+End Class

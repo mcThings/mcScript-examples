@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ProjectName>Blinky2</ProjectName>
+  <DeviceType>mcMod110</DeviceType>
+  <LastDocumentName>Blinky2.mcScript</LastDocumentName>
+  <DocumentSettings>
+    <DocumentSetting>
+      <FileSpec>Blinky2.mcScript</FileSpec>
+      <Row>16</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+  </DocumentSettings>
+</ProjectSetting>

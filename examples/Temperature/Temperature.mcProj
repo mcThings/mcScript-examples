@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ProjectName>Temperature</ProjectName>
+  <DeviceType>mcMod110</DeviceType>
+  <LastDocumentName>..\..\libraries\temperature\tmp102\TempSensor.mcScript</LastDocumentName>
+  <DocumentSettings>
+    <DocumentSetting>
+      <FileSpec>Temperature.mcScript</FileSpec>
+      <Row>5</Row>
+      <Col>15</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <FileSpec>..\..\libraries\temperature\tmp102\TempSensor.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+  </DocumentSettings>
+</ProjectSetting>

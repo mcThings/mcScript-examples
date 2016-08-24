@@ -1,0 +1,20 @@
+﻿//
+// This example logs the mc Unique IDentifier (mcUID) and the Temperature 
+// to IFTTT.
+//
+Class Temperature
+    Shared Event GetTemp() RaiseEvent Every 1 Minutes
+        LedGreen = True
+        
+        Dim TempC As Float = TempSensor.GetTemp
+        Dim TempF As Float = TempSensor.ToFarenheit(TempC)
+        
+        If TempC > 25.0 Then
+            LedRed = True
+        Else
+            LedRed = False
+        End If
+        
+        LedGreen = False
+    End Event
+End Class 

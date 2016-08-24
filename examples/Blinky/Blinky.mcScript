@@ -1,0 +1,9 @@
+﻿//
+// This is a very simple blink a led program. It blinks the red led
+// Automatically, event driven, low power and very simple
+// 
+Class Demo 
+    Shared Event BlinkRed() RaiseEvent Every 250 milliSeconds
+        LedRed = Not LedRed 
+    End Event
+End Class

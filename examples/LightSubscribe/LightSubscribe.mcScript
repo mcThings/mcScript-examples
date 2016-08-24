@@ -1,0 +1,21 @@
+﻿Define PinMode Pin2 As DigitalOutput Alias Relay
+
+Class LightSubscribe
+    Shared Event Boot() 
+        Lplan.Subscribe("LightSw")           
+    End Event
+    
+    Shared Event SubscriptionDelivery()
+        Dim msg As Message = Lplan.GetDelivery()
+        If msg.Topic= "LightSw" Then
+            Dim payload As ListOfByte = msg.PayLoad
+            If payload(0) = 1 Then
+                Relay = True
+                LedGreen = True
+            Else
+                Relay = False
+                LedGreen = False
+            End If 
+        End If
+    End Event
+End Class 

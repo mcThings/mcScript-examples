@@ -1,0 +1,27 @@
+﻿Class JsonExample
+    
+    Const DeviceId As String = "577144f8af5318010042c29b"
+    Const PublishTopic As String = "losant/" + DeviceId + "/state"
+    
+    Shared Event Report() RaiseEvent Every 15 Seconds
+        
+        // Create date object
+        Dim jDate As Json = New Json
+        Dim date As DateTime = DateTime.Now
+        jDate.Add("$date", date)
+        
+        // Create data object
+        Dim jData As Json = New Json
+        Dim temperature As Float = TempSensor.GetTemp
+        jData.Add("temperature", temperature.ToInteger)
+        
+        // Create state object
+        Dim jState As Json = New Json
+        jState.Add("time", jDate)
+        jState.Add("data", jData)
+        
+        Lplan.Publish(PublishTopic, jState.ToListOfByte)
+        
+    End Event
+    
+End Class 
