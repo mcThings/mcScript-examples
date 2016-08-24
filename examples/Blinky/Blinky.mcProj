@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+<ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ProjectName>Blinky</ProjectName>
   <DeviceType>mcMod110</DeviceType>
   <LastDocumentName>Blinky.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
       <FileSpec>Blinky.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
+      <Row>8</Row>
+      <Col>9</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>
