@@ -1,4 +1,11 @@
-﻿Class S8
+﻿'  This library reads the CO2 value of SenseAir S8 CO2 Sensor.
+'  CO2: https://en.wikipedia.org/wiki/Carbon_dioxide
+'  Datasheet can be found here: http://www.senseair.com/products/oem-modules/senseair-s8/
+'
+'  You can buy sensor from m.nu in Sweden:
+'  S8 https://www.m.nu/co2matare-fran-senseair-p-1440.html
+
+Class S8
     Shared serial As Uart
     Shared serialBuf As ListOfByte
     
