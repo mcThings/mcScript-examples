@@ -1,0 +1,48 @@
+﻿Class S8
+    Shared serial As Uart
+    Shared serialBuf As ListOfByte
+    
+    Shared Function readCO2(pinTX As Pin, pinRX As Pin) As Integer
+        serialBuf = New ListOfByte
+        serial = Uart.Create(9600, pinTX, pinRX)
+        Dim iterate As Integer = 0
+        
+        serial.Write(0xfe)
+        serial.Write(0x04)
+        serial.Write(0x00)
+        serial.Write(0x03)
+        serial.Write(0x00)
+        serial.Write(0x01)
+        serial.Write(0xd5)
+        serial.Write(0xc5)
+        
+        While serialBuf.Count< 7 Or iterate > 10
+            iterate = iterate + 1
+            Thread.Sleep(50000)
+        End While
+        
+        If iterate = 10 Then
+            Return 0
+        Else           
+            Dim ppm As Integer = (serialBuf(3) << 8) | (serialBuf(4))
+            
+            serialBuf.Clear
+            serial.Close
+            
+            Return ppm           
+        End If
+        
+    End Function
+    
+    Shared Event Uart0Receive()
+        
+        Dim chr As Integer = serial.Read()
+        
+        While chr >= 0    
+            serialBuf.Add(chr.ToByte)
+            chr = serial.Read()
+        End While
+        
+    End Event
+    
+End Class

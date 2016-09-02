@@ -1,0 +1,8 @@
+﻿Define PinMode Pin0 As DigitalOutput //TX
+Define PinMode Pin1 As DigitalInput //RX
+
+Class SenseairExample
+    Shared Event read() RaiseEvent Every 1 Minutes
+        Dim ppm As Integer = S8.readCO2(Pin.Pin0, Pin.Pin1)
+    End Event
+End Class 
