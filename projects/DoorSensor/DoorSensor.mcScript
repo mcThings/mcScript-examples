@@ -6,9 +6,13 @@ Class Main
     Const Sub_Topic As String = "MCThings/Publish"
     Shared Publish_data As Boolean
     Shared accel As MMA8652
+    Shared TimeSinceKnockTriggered As Integer
+    Shared TimeSinceDoorClosed As Integer
     
     Shared Event Boot()
         Publish_data = True
+        TimeSinceKnockTriggered = 0
+        TimeSinceDoorClosed = 0
         MQTT.Subscribe(Sub_Topic)
         //MQTT.Publish("Door", False)
         MQTT.Publish("Status", "Booted")
@@ -47,11 +51,16 @@ Class Main
             If (accel.readTransientSource() & MMA8652.TEA) = MMA8652.TEA Then
                 'Any Transient Occured
                 LedGreen = True
-                //MQTT.Publish("Transient", True)
-                Dim timeSinceLastTransient As Integer = Device.GetTimeSpan()
-                'If at least two transients withing 0.5 seconds, and door is closed
-                If timeSinceLastTransient < 500000 And timeSinceLastTransient > 0 And ReedSwitch = False Then //if less than 0.5 seconds since last transient
-                    MQTT.Publish("Doorknock", True)
+                If ReedSwitch = False Then //If door is closed
+                    //if more than 10 seconds since Knock last triggered, and more than 5 seconds since door closed
+                    If (Device.Uptime() - TimeSinceKnockTriggered > 10) And (Device.Uptime() - TimeSinceDoorClosed > 5) Then
+                        Dim timeSinceLastTransient As Integer = Device.GetTimeSpan()
+                        'If at least two transients within 0.5 seconds
+                        If timeSinceLastTransient < 500000 And timeSinceLastTransient > 0 Then
+                            TimeSinceKnockTriggered = Device.Uptime()
+                            MQTT.Publish("Doorknock", True)
+                        End If
+                    End If
                 End If
                 LedGreen = False
             End If 
@@ -63,6 +72,9 @@ Class Main
         Thread.ClearHardwareEvent()
         LedGreen = True
         Dim Door_Status As Boolean = ReedSwitch
+        If Door_Status = False Then
+            TimeSinceDoorClosed = Device.Uptime()
+        End If
         If Publish_data Then
             MQTT.Publish("Door", Door_Status)
         End If
