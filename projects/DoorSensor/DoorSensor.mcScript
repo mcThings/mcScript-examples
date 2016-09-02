@@ -1,0 +1,130 @@
+﻿//MMA8652 Library Test - Door Knock and Status (open/close) Sensor
+
+Class Main
+    
+    Shared data As dataType
+    Const Sub_Topic As String = "MCThings/Publish"
+    Shared Publish_data As Boolean
+    Shared accel As MMA8652
+    
+    Shared Event Boot()
+        Publish_data = True
+        MQTT.Subscribe(Sub_Topic)
+        //MQTT.Publish("Door", False)
+        MQTT.Publish("Status", "Booted")
+        accel = New MMA8652
+        If accel.online Then
+            MQTT.Publish("Status", "Accel Sensor Online")
+            accel.ConfigureShockInterrupt(0.8, 20) //default 0.8, 0
+            'accel.ConfigureOrientationInterrupt(2.4, 500)
+        Else
+            MQTT.Publish("Status", "Accel Sensor  Offline")
+        End If
+    End Event
+    
+    Shared Event NewGateway()
+        MQTT.Subscribe(Sub_Topic)
+    End Event
+    
+    Shared Event AccelerometerInt1()
+        Dim int_source As Byte = accel.readIntSource()
+        If (int_source & MMA8652.SRC_LNDPRT) = MMA8652.SRC_LNDPRT Then
+            'PL interrupt occured
+            //LedRed = True
+            If (accel.readPLStatus() & MMA8652.BAFRO) = MMA8652.BAFRO Then
+                'front facing
+                LedRed = True
+                MQTT.Publish("Orientation", "Front Facing")
+            Else
+                'back facing
+                LedRed = False
+                MQTT.Publish("Orientation", "Back Facing")
+            End If
+            //LedRed = False
+        End If
+        If (int_source & MMA8652.SRC_TRANS) = MMA8652.SRC_TRANS Then
+            'Transient interrupt occured
+            If (accel.readTransientSource() & MMA8652.TEA) = MMA8652.TEA Then
+                'Any Transient Occured
+                LedGreen = True
+                //MQTT.Publish("Transient", True)
+                Dim timeSinceLastTransient As Integer = Device.GetTimeSpan()
+                'If at least two transients withing 0.5 seconds, and door is closed
+                If timeSinceLastTransient < 500000 And timeSinceLastTransient > 0 And ReedSwitch = False Then //if less than 0.5 seconds since last transient
+                    MQTT.Publish("Doorknock", True)
+                End If
+                LedGreen = False
+            End If 
+        End If
+    End Event
+    
+    Shared Event ReedSwitchChanged()
+        Thread.Sleep(500000)
+        Thread.ClearHardwareEvent()
+        LedGreen = True
+        Dim Door_Status As Boolean = ReedSwitch
+        If Publish_data Then
+            MQTT.Publish("Door", Door_Status)
+        End If
+        MQTT.BeaconPublish(dataType.DOOR, Door_Status)
+        LedGreen = False
+    End Event
+    
+    Shared Event SubscriptionDelivery()
+        Dim msg As Message = Lplan.GetDelivery()
+        If msg.Topic= Sub_Topic Then 
+            'Dim payload As ListOfByte = msg.PayLoad
+            Dim tmp As Boolean = True 'payload.ExtractFloat(0)
+            Dim tmp_str As String = msg.PayLoad.ToString()
+            
+            If Boolean.TryConvert(tmp_str, tmp) Then
+                Publish_data = tmp
+                MQTT.Publish("Publish", Publish_data)
+            Else
+                MQTT.Publish("Publish", tmp_str + " :Boolean Conversion failed")
+            End If   
+        End If
+    End Event
+    
+    Shared Event Publish() RaiseEvent Every 10 Seconds //1 Minutes
+        LedGreen = True
+        //Dim Test As Byte = accel.whoAmI()
+        //MQTT.Publish("Test", Test)
+        Select data
+            Case dataType.UPTIME
+                Dim Uptime As Integer = Device.Uptime()
+                If Publish_data Then
+                    MQTT.Publish("Uptime", Uptime)
+                End If
+                If Uptime < Short.MaxValue Then
+                    MQTT.BeaconPublish(dataType.UPTIME, Uptime)
+                End If
+                data = dataType.BATTVOLTAGE
+            Case dataType.BATTVOLTAGE
+                Dim BattVolt As Integer = Device.BatteryVoltage()
+                If Publish_data Then
+                    MQTT.Publish("BatteryVoltage", BattVolt)
+                End If
+                MQTT.BeaconPublish(dataType.BATTVOLTAGE, BattVolt)
+                data = dataType.TEMPERATURE
+            Case dataType.TEMPERATURE
+                Dim TempC As Float = TempSensor.GetTemp
+                If Publish_data Then
+                    MQTT.Publish("Temperature", TempC)
+                End If
+                MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
+                data = dataType.DOOR
+            Case dataType.DOOR
+                Dim Door_Status As Boolean = ReedSwitch
+                If Publish_data Then
+                    MQTT.Publish("Door", Door_Status) //True = OPEN False = CLOSED
+                End If
+                MQTT.BeaconPublish(dataType.DOOR, Door_Status)
+                data = dataType.UPTIME
+            Case Else
+                MQTT.Publish("Status", "OnLine")
+                data = dataType.UPTIME
+        End Select
+        LedGreen = False
+    End Event     
+End Class 
