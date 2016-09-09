@@ -194,6 +194,7 @@ Class MMA8652
     Const FULL_SCALE_4G As Byte = 0x01
     Const FULL_SCALE_8G As Byte = 0x02
     
+    //Awake Frequencies
     Const AODR_800HZ As Byte = 0x00, // 200 Hz
     Const AODR_400HZ As Byte = 0x08
     Const AODR_200HZ As Byte = 0x10
@@ -202,6 +203,12 @@ Class MMA8652
     Const AODR_12_5HZ As Byte = 0x28 // 12.5 Hz, etc.
     Const AODR_6_25HZ As Byte = 0x30
     Const AODR_1_56HZ As Byte = 0x38
+    
+    //Sleep Frequencies
+    Const SODR_50HZ As Byte = 0x00
+    Const SODR_12_5HZ As Byte = 0x40 // 12.5 Hz, etc.
+    Const SODR_6_25HZ As Byte = 0x80
+    Const SODR_1_56HZ As Byte = 0xc0
     
     //Sleep modes
     Const SMOD_NORMAL As Byte = 0x00
@@ -541,6 +548,39 @@ Class MMA8652
         Return read(CTRL_REG2) & SLPE_MASK // read bit 3
     End Function
     
+    Public Sub SetSleepModeFrequency(frequency As Byte)
+        write(CTRL_REG1, (read(CTRL_REG1) & ~ASLP_RATE_MASK) | frequency)
+    End Sub
+    
+    Public Function GetSleepModeleepModeFrequency() As Byte
+        Return (read(CTRL_REG1) & ASLP_RATE_MASK) >> 7
+    End Function
+    
+    Public Sub SetSleepModeDuration(duration As Float)
+        //period of inactivity before device enters sleep mode, in ms
+        Dim durationByte As Byte = 0
+        If GetWakeModeFrequency() = AODR_1_56HZ Then
+            durationByte = map_range(duration, 0, 162000.0, 0, 0xff)
+        Else
+            durationByte = map_range(duration, 0, 81000.0, 0, 0xff)
+        End If
+        write(ASLP_COUNT, durationByte)
+    End Sub
+    
+    Public Function GetSleepModeleepModeDuration() As Byte
+        Return read(ASLP_COUNT)
+    End Function
+    
+    Public Function GetSleepModeleepModeDurationms() As Float
+        Return read(ASLP_COUNT)
+        Dim durationByte As Byte = read(ASLP_COUNT)
+        If GetWakeModeFrequency() = AODR_1_56HZ Then
+            Return map_range(durationByte, 0, 0xff, 0, 162000.0)
+        Else
+            Return map_range(durationByte, 0, 0xff, 0, 81000.0)
+        End If
+    End Function
+    
     Public Sub SetSleepModeResolution(resolution As Byte)
         write(CTRL_REG2, (read(CTRL_REG2) & ~SMODS_MASK) | resolution) // clear bits 4 and 5, set sleep mode resolution
     End Sub
@@ -758,7 +798,11 @@ Class MMA8652
             Standby()
             
             'Setup the 3 data rate bits, from DR 0 to 7
-            SetWakeModeFrequency(AODR_50HZ) // set 50 Hz Wake Mode
+            SetWakeModeFrequency(AODR_50HZ) // set 50 Hz Wake Mode frequency
+            'Setup the 2 data rate bits, from SDR 0 to 4
+            SetSleepModeFrequency(SODR_12_5HZ) // set sleep mode frequency to 12.5 Hz
+            'set duration (in ms) before device auto sleeps (set wake mode frequency first)
+            SetSleepModeDuration(2000)
             'Low Power Mode (sleep mode on)
             SetSleepMode(SLPE_MASK) // clear bit 3, enable sleep mode
             'set Awake resolution

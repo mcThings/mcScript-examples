@@ -2,13 +2,13 @@
 <ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ProjectName>DoorSensor</ProjectName>
   <DeviceType>mcMod110</DeviceType>
-  <LastDocumentName>..\..\Examples\MMA8652.mcscript</LastDocumentName>
+  <LastDocumentName>DoorSensor.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
       <Name>DoorSensor</Name>
       <FileSpec>DoorSensor.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
+      <Row>18</Row>
+      <Col>23</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
@@ -28,6 +28,13 @@
     <DocumentSetting>
       <Name>MMA8652</Name>
       <FileSpec>..\..\Examples\MMA8652.mcscript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>[Listing]</Name>
+      <FileSpec>DoorSensor.lst</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
