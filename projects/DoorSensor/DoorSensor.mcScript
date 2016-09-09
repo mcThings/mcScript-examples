@@ -4,10 +4,11 @@
 //publishes data in beacons
 //Uses accelerometer transient detection to sense knocking on the door
 
-// N Waterton 9th September 2016 V1.0: Beta Release
+// N Waterton 9th September 2016 V1.01: Beta Release - changed door status reporting frequency to fix bug in beacon data reporting...
 
 Class Main
     
+    Const Version As String = "V1.01"
     Shared data As dataType
     Const Sub_Topic As String = "MCThings/Publish"
     Shared Sub_Topic_Knock_Enable As String
@@ -23,7 +24,7 @@ Class Main
         TimeSinceDoorClosed = 0
         MQTT.Subscribe(Sub_Topic)
         MQTT.Subscribe(Sub_Topic_Knock_Enable)
-        MQTT.Publish("Status", "Booted")
+        MQTT.Publish("Status", "Booted: " + Version)
         accel = New MMA8652
         If accel.online Then
             MQTT.Publish("Status", "Accel Sensor Online")
@@ -152,25 +153,22 @@ Class Main
                     MQTT.Publish("Temperature", TempC)
                 End If
                 MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
-                //data = dataType.DOOR //changed to send door status every cycle now.
-                data = dataType.UPTIME
+                data = dataType.DOOR
             Case dataType.DOOR
                 Dim Door_Status As Boolean = ReedSwitch
                 If Publish_data Then
                     MQTT.Publish("Door", Door_Status) //True = OPEN False = CLOSED
                 End If
                 MQTT.BeaconPublish(dataType.DOOR, Door_Status)
-                data = dataType.UPTIME
+                If Device.Uptime() < Short.MaxValue Then
+                    data = dataType.UPTIME
+                Else
+                    data = dataType.BATTVOLTAGE
+                End If
             Case Else
                 MQTT.Publish("Status", "OnLine")
                 data = dataType.UPTIME
         End Select
-        //Publish door status every cycle...
-        Dim Door_Status As Boolean = ReedSwitch
-        If Publish_data Then
-            MQTT.Publish("Door", Door_Status) //True = OPEN False = CLOSED
-        End If
-        MQTT.BeaconPublish(dataType.DOOR, Door_Status)
         LedGreen = False
     End Event     
 End Class 

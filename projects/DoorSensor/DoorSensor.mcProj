@@ -7,8 +7,8 @@
     <DocumentSetting>
       <Name>DoorSensor</Name>
       <FileSpec>DoorSensor.mcScript</FileSpec>
-      <Row>18</Row>
-      <Col>23</Col>
+      <Row>0</Row>
+      <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
@@ -28,13 +28,6 @@
     <DocumentSetting>
       <Name>MMA8652</Name>
       <FileSpec>..\..\Examples\MMA8652.mcscript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
-      <BreakPointLineNumbers />
-    </DocumentSetting>
-    <DocumentSetting>
-      <Name>[Listing]</Name>
-      <FileSpec>DoorSensor.lst</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
