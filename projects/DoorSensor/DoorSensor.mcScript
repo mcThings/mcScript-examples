@@ -4,7 +4,8 @@
 //publishes data in beacons
 //Uses accelerometer transient detection to sense knocking on the door
 
-// N Waterton 9th September 2016 V1.01: Beta Release - changed door status reporting frequency to fix bug in beacon data reporting...
+// N Waterton 9th September 2016  V1.01: Beta Release - changed door status reporting frequency to fix bug in beacon data reporting...
+// N Waterton 10th September 2016 V1.02: Beta Release - removed uptime reporting bug
 
 Class Main
     
@@ -160,11 +161,7 @@ Class Main
                     MQTT.Publish("Door", Door_Status) //True = OPEN False = CLOSED
                 End If
                 MQTT.BeaconPublish(dataType.DOOR, Door_Status)
-                If Device.Uptime() < Short.MaxValue Then
-                    data = dataType.UPTIME
-                Else
-                    data = dataType.BATTVOLTAGE
-                End If
+                data = dataType.UPTIME
             Case Else
                 MQTT.Publish("Status", "OnLine")
                 data = dataType.UPTIME
