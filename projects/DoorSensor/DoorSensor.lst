@@ -1,4 +1,4 @@
-****** BUILD Of 'DoorSensor' (2016-09-10 1:11:52 PM)
+****** BUILD Of 'DoorSensor' (2016-09-17 10:57:05 PM)
 
 
 ****** EVENT HANDLERS
@@ -42,8 +42,8 @@
                                                                                                                                                                               35:   0x0004   StringSizeInBlocks = 4
                                                                                                                                                                               36:   0x0000   Reserved
                                                                                                                                                                               37:   0x0000   Reserved
-                                                                                                                                                                              38:   0xC318   Compile Date and Time 2016-09-10 13:11:52
-                                                                                                                                                                              39:   0x1F66   Compile Date and Time 2016-09-10 13:11:52
+                                                                                                                                                                              38:   0x86C1   Compile Date and Time 2016-09-17 22:57:05
+                                                                                                                                                                              39:   0x1F70   Compile Date and Time 2016-09-17 22:57:05
                                                                                                                                                                               40:   0x0000   Reserved
                                                                                                                                                                               41:   0x0000   Reserved
                                                                                                                                                                               42:   0x0000   Reserved
@@ -123,7 +123,7 @@
 000010  Class Main                                                                                                                                                            110:  0x1800   EntryPoint              ValTypParams=0, RefTypParams=0
 
 000011      
-000012      Const Version As String = "V1.01"
+000012      Const Version As String = "V1.02"
 000013      Shared data As dataType
 000014      Const Sub_Topic As String = "MCThings/Publish"
 000015      Shared Sub_Topic_Knock_Enable As String
@@ -717,7 +717,7 @@
     Block Class (Line 10:171)
         Main            Me              (ReadOnly, Offset=0)
         Object          MyBase          (ReadOnly, Offset=0)
-        String          Version         (Literal="V1.01")
+        String          Version         (Literal="V1.02")
         dataType        data            (SharedValTypVariableOffset=28)
         String          Sub_Topic       (Literal="MCThings/Publish")
         String          Sub_Topic_Knock_(SharedRefTypVariableOffset=0)
@@ -2541,7 +2541,7 @@
 000553      End Sub                                                                                                                                                           1464: 0x0091   Return                  
 
 000554      
-000555      Public Function GetSleepModeleepModeFrequency() As Byte                                                                                                           1465: 0x1800   EntryPoint              ValTypParams=0, RefTypParams=0
+000555      Public Function GetSleepModeFrequency() As Byte                                                                                                                   1465: 0x1800   EntryPoint              ValTypParams=0, RefTypParams=0
 
 000556          Return (read(CTRL_REG1) & ASLP_RATE_MASK) >> 7                                                                                                                1466: 0x802A   PushConstU10            42 (0x002A)
                                                                                                                                                                               1467: 0x000D   PushMe                  
@@ -2599,7 +2599,7 @@
 000568      End Sub                                                                                                                                                           1506: 0x0091   Return                  
 
 000569      
-000570      Public Function GetSleepModeleepModeDuration() As Byte                                                                                                            1507: 0x1800   EntryPoint              ValTypParams=0, RefTypParams=0
+000570      Public Function GetSleepModeDuration() As Byte                                                                                                                    1507: 0x1800   EntryPoint              ValTypParams=0, RefTypParams=0
 
 000571          Return read(ASLP_COUNT)                                                                                                                                       1508: 0x8029   PushConstU10            41 (0x0029)
                                                                                                                                                                               1509: 0x000D   PushMe                  
@@ -2609,7 +2609,7 @@
 000572      End Function                                                                                                                                                      1512: 0x0093   Return0                 
 
 000573      
-000574      Public Function GetSleepModeleepModeDurationms() As Float                                                                                                         1513: 0x1800   EntryPoint              ValTypParams=0, RefTypParams=0
+000574      Public Function GetSleepModeDurationms() As Float                                                                                                                 1513: 0x1800   EntryPoint              ValTypParams=0, RefTypParams=0
                                                                                                                                                                               1514: 0xE020   AllocateStackSpace      ValTypeSize=1, RefTypeSize=0
 
 000575          Return read(ASLP_COUNT)                                                                                                                                       1515: 0x8029   PushConstU10            41 (0x0029)
@@ -3959,7 +3959,7 @@
         Block Sub SetSleepModeFrequency (Line 551:553)
             Byte            frequency       (LocalValTypVariableOffset=0)
         End Block
-        Block Function GetSleepModeleepModeFrequency (Line 555:557)
+        Block Function GetSleepModeFrequency (Line 555:557)
         End Block
         Block Sub SetSleepModeDuration (Line 559:568)
             Byte            durationByte    (LocalValTypVariableOffset=1)
@@ -3969,9 +3969,9 @@
             Block Else (Line 564:566)
             End Block
         End Block
-        Block Function GetSleepModeleepModeDuration (Line 570:572)
+        Block Function GetSleepModeDuration (Line 570:572)
         End Block
-        Block Function GetSleepModeleepModeDurationms (Line 574:582)
+        Block Function GetSleepModeDurationms (Line 574:582)
             Byte            durationByte    (LocalValTypVariableOffset=0)
             Block If Then  (Line 577:579)
             End Block
@@ -4115,13 +4115,13 @@ TimeSinceDoorClosed, Class=Integer, Offset=36, SourceClass=Main
      1 String "True"
      4 String "False"
      7 String "\r\n"
-     9 String "V1.01"
+     9 String "V1.02"
     12 String "MCThings/Publish"
     18 String "MCThings/"
     22 String "X8"
     24 String "/EnableDoorKnock"
     30 String "Status"
-    33 String "Booted: V1.01"
+    33 String "Booted: V1.02"
     38 String "Accel Sensor Online"
     44 String "KnockEnable"
     48 String "Accel Sensor Offline"

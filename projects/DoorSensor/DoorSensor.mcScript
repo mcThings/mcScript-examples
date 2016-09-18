@@ -9,7 +9,7 @@
 
 Class Main
     
-    Const Version As String = "V1.01"
+    Const Version As String = "V1.02"
     Shared data As dataType
     Const Sub_Topic As String = "MCThings/Publish"
     Shared Sub_Topic_Knock_Enable As String

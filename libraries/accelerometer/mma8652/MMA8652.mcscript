@@ -552,7 +552,7 @@ Class MMA8652
         write(CTRL_REG1, (read(CTRL_REG1) & ~ASLP_RATE_MASK) | frequency)
     End Sub
     
-    Public Function GetSleepModeleepModeFrequency() As Byte
+    Public Function GetSleepModeFrequency() As Byte
         Return (read(CTRL_REG1) & ASLP_RATE_MASK) >> 7
     End Function
     
@@ -567,11 +567,11 @@ Class MMA8652
         write(ASLP_COUNT, durationByte)
     End Sub
     
-    Public Function GetSleepModeleepModeDuration() As Byte
+    Public Function GetSleepModeDuration() As Byte
         Return read(ASLP_COUNT)
     End Function
     
-    Public Function GetSleepModeleepModeDurationms() As Float
+    Public Function GetSleepModeDurationms() As Float
         Return read(ASLP_COUNT)
         Dim durationByte As Byte = read(ASLP_COUNT)
         If GetWakeModeFrequency() = AODR_1_56HZ Then
