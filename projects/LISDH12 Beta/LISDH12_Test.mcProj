@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ProjectName>LISDH12_Test</ProjectName>
+  <DeviceType>mcMod120</DeviceType>
+  <LastDocumentName>LIS2DH12.mcScript</LastDocumentName>
+  <DocumentSettings>
+    <DocumentSetting>
+      <Name>LISDH12_Test</Name>
+      <FileSpec>LISDH12_Test.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>LIS2DH12</Name>
+      <FileSpec>LIS2DH12.mcScript</FileSpec>
+      <Row>985</Row>
+      <Col>26</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>MQTT</Name>
+      <FileSpec>..\..\Examples\MQTT.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>TempSensor</Name>
+      <FileSpec>..\..\Examples\TempSensor.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>[Listing]</Name>
+      <FileSpec>LISDH12_Test.lst</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+  </DocumentSettings>
+  <ManualCompile>false</ManualCompile>
+</ProjectSetting>
