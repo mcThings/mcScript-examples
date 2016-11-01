@@ -1,0 +1,264 @@
+﻿// This Class supports Publishing, Subscribing and Beaconing via MQTT and UDP.
+
+Enum dataType As Byte
+    NONE = 0
+    VERSION = 1 //default beacon data for MQTT
+    UPTIME = 2
+    BATTVOLTAGE = 3
+    TEMPERATURE = 4
+    TEMPERATURE2 = 5
+    HUMIDITY = 6
+    DEWPOINT = 7
+    PRESSURE = 8
+    ALTITUDE = 9
+    MOTION = 10
+    DOOR = 11
+    KNOCK = 12
+    LOWBATT = 13
+End Enum
+
+Class MQTT_Message
+    //class to act as MQTT message structure
+    Public __topic As String
+    Public __payload As ListOfByte
+    Public __quality As QoS
+    Public __exact As Boolean
+    Public device_specific As String = "MCThings/" + Device.mcUID().ToString("X8") + "/"
+    
+    Public Sub New()
+    End Sub
+    
+    Public Sub New(_topic As String, _text As String, _quality As QoS, _exact As Boolean)
+        __topic = _topic
+        __payload = New ListOfByte()
+        __payload.Add(_text)
+        __quality = _quality
+        __exact = _exact
+    End Sub
+    
+    Public Function topic() As String
+        If exact() Then
+            Return __topic
+        Else
+            Return (device_specific + __topic)
+        End If
+    End Function
+    
+    Public Function payload() As ListOfByte
+        Return __payload
+    End Function
+    
+    Public Function quality() As QoS
+        Return __quality
+    End Function
+    
+    Public Function exact() As Boolean
+        Return __exact
+    End Function
+    
+    Public Sub Publish()
+        Lplan.Publish(topic(), __payload, __quality)
+    End Sub
+    
+End Class
+
+Class MQTT
+    //MQTT Publishing class
+    Shared use_queue As Boolean //Use publish queueing to prevent module becoming unresponsive (bug)
+    Shared MQTT_priority As Boolean //Publish immediately (bypass queue)
+    Shared queue As ListOfObject //FIFO
+    Shared timeSincePublish As Integer //publishing timer
+    Shared running As Boolean //crude mutex
+    Shared recheck As Boolean //allows rechecking of real-time event (checks every 5 seconds when set)
+    Shared item As Boolean //item to recheck
+    Shared publish_as As ListOfByte //what to publish as
+    
+    Shared Sub Publish(topic As String, text As String)
+        MQTT.Publish_String(topic, text, QoS.AtMostOnce, False)    
+    End Sub
+    
+    Shared Sub Publish(topic As String, value As Object)
+        Dim text As String = value.ToString()
+        MQTT.Publish_String(topic, text, QoS.AtMostOnce, False)
+    End Sub
+    
+    Shared Sub Publish(topic As String, text As String, quality As QoS)
+        MQTT.Publish_String(topic, text, quality, False)
+    End Sub
+    
+    Shared Sub Publish(topic As String, value As Object, quality As QoS)
+        Dim text As String = value.ToString()
+        MQTT.Publish_String(topic, text, quality, False)
+    End Sub
+    
+    Shared Sub Publish_exact(topic As String, text As String)
+        MQTT.Publish_String(topic, text, QoS.AtMostOnce, True)
+    End Sub
+    
+    Shared Sub Publish_exact(topic As String, text As String, quality As QoS)
+        MQTT.Publish_String(topic, text, quality, True)
+    End Sub
+    
+    Shared Sub Publish_Priority(topic As String, value As Object)
+        Dim text As String = value.ToString()
+        MQTT.Publish_Priority(topic, text, QoS.AtMostOnce)
+    End Sub
+    
+    Shared Sub Publish_Priority(topic As String, value As Object, quality As QoS)
+        Dim text As String = value.ToString()
+        MQTT.Publish_Priority(topic, text, quality)
+    End Sub
+    
+    Shared Sub Publish_Priority(topic As String, text As String)
+        MQTT.Publish_Priority(topic, text, QoS.AtMostOnce)
+    End Sub
+    
+    Shared Sub Publish_Priority(topic As String, text As String, quality As QoS)
+        MQTT_priority = True 
+        MQTT.Publish_String(topic, text, quality, False)
+    End Sub
+    
+    Shared Sub Recheck_Event(_publish_as As String, _item As Boolean)
+        //set event to recheck, and what to publish as
+        item = _item
+        publish_as = New ListOfByte()
+        publish_as.Add(_publish_as)
+        recheck = True
+    End Sub
+    
+    Shared Sub remove(index As Integer) //workaround until list remove is fixed
+        If queue = Nothing Or queue.Count() = 0 Then
+            Return
+        End If
+        Dim list As ListOfObject = New ListOfObject()
+        For i As Integer = 0 To queue.Count- 1
+            If i <> index Then
+                list.Add(queue(i))
+            End If
+        Next
+        queue.Clear()
+        If list.Count> 0 Then
+            queue.AddRange(list)
+        End If
+    End Sub
+    
+    Shared Sub Insert(value As Object) //workaround until list InsertAt is fixed (add to top of list)
+        If queue = Nothing Or queue.Count() = 0 Then
+            queue = New ListOfObject()
+            queue.Add(value)
+            Return
+        End If
+        Dim list As ListOfObject = New ListOfObject()
+        list.Add(value)
+        list.AddRange(queue)
+        queue.Clear()
+        queue.AddRange(list)
+    End Sub
+    
+    Shared Sub Publish_String(topic As String, text As String, quality As QoS, exact As Boolean)
+        If queue = Nothing Then //initialize on first run
+            queue = New ListOfObject()
+            timeSincePublish = 0
+        End If
+        
+        Dim _Message As MQTT_Message = New MQTT_Message(topic, text, quality, exact)
+        
+        If Not use_queue Then
+            MQTT.Publish(_Message) //publish direct and return if queuing is not selected or Priority is set
+            Return
+        End If
+        
+        While running
+            Thread.Sleep(10000) //10ms delay loop while waiting for queue/publish thread to end
+        End While
+        
+        If (Device.Uptime() - timeSincePublish > 2) And queue.Count= 0 Then //direct publish
+            MQTT.Publish(_Message)
+        Else
+            If MQTT_priority Then
+                'queue.InsertAt(0, _Message) //or add to top of queue FIFO - not working (bug)
+                MQTT.Insert(_Message) //or add to top of queue FIFO 
+            Else
+                queue.Add(_Message) //or add to end of queue FIFO
+            End If 
+        End If
+        MQTT_priority = False
+    End Sub
+    
+    Shared Sub Publish(msg As MQTT_Message)
+        //Actual publishing method
+        msg.Publish()
+        timeSincePublish = Device.Uptime()
+    End Sub
+    
+    Shared Event Publish_Queue() RaiseEvent Every 3 Seconds //limit publishing to once per 3 seconds
+        If queue = Nothing Or (Device.Uptime() - timeSincePublish < 3) Then
+            Return
+        End If
+        If queue.Count> 0 Then
+            running = True //crude mutex
+            Dim msg As MQTT_Message = New MQTT_Message()
+            Dim msg_queue As Object = queue(0).Clone() //make shallow copy of top FIFO message object
+            msg = msg_queue.Cast(MQTT_Message) //cast as MQTT_Message
+            msg.Publish() //publish message
+            
+            'running = True //crude mutex
+            //queue.Remove(msg_queue)
+            //MQTT.remove(0) //remove from top of queue (workaround for bug - now fixed)
+            queue.RemoveAt(0) //remove from top of queue
+            running = False
+        End If
+    End Event
+    
+    Shared Event Recheck_Event() RaiseEvent Every 5 Seconds //Recheck Event every 5 seconds if set
+        If recheck And (Device.Uptime() - timeSincePublish > 5) Then //if it's been more than 5 seconds since publishing
+            //MQTT.Publish(publish_as, item)
+            MQTT.Publish(publish_as.ToString, item, QoS.ExactlyOnce)
+            recheck = False //just recheck once
+        End If
+    End Event
+    
+    //**************************************************************************/
+    //*!
+    //    Encodes Float or Integer into 4 bytes of beacon data
+    //    encoding is - byte 0 is data type (numeric value)
+    //    Integer as Short (2 bytes) 
+    //    Fraction as byte (1 byte)
+    //*/
+    //**************************************************************************/
+    Shared Sub BeaconPublish(data_Type As Byte, value As Object)
+        Dim fraction As Byte = 0
+        Dim data As Short = 0
+        If value Is Float Then
+            data = value.Cast(Float).ToShort() //get integer part (16 bit only)
+            fraction = ((value.Cast(Float) - data) * 100.0).ToByte()
+        ElseIf value Is Integer Then
+            data = value.Cast(Integer).ToShort() //get integer part (16 bit only)
+        ElseIf value Is Short Then
+            data = value.Cast(Short)
+        ElseIf value Is Byte Then
+            data = value.Cast(Byte).ToShort() //get integer part (16 bit only)
+        ElseIf value Is Boolean Then
+            Dim on As Boolean = value.Cast(Boolean)
+            If on Then
+                data = 1
+            End If
+        End If
+        Dim beaconData As ListOfByte = New ListOfByte()
+        beaconData.Add(data_Type)
+        beaconData.AddShort(data)
+        beaconData.Add(fraction)
+        Lplan.SetBeaconData(beaconData)
+        //Lplan.SendBeacon()
+        //Lplan.BeaconNow () //does not seem to work
+    End Sub
+    
+    Shared Sub Subscribe(topic As String)
+        Lplan.Subscribe(topic)
+    End Sub
+    
+    Shared Sub Subscribe(topic As String, quality As QoS)
+        Lplan.Subscribe(topic, quality)
+    End Sub
+    
+End Class

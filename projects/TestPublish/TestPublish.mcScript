@@ -1,0 +1,18 @@
+﻿//
+// This example just publishes "Hello World" to MQTT Topic "MCThings/Test"
+//
+
+Class Events
+    Shared Event Publish() RaiseEvent Every 10 Seconds
+        LedGreen = True
+        Dim Temppayload As ListOfByte = New ListOfByte()
+        Dim TempString As String = "Hello World"
+        Temppayload.Add(TempString)
+        Lplan.Publish("MCThings/Test", Temppayload)
+        LedGreen = False
+    End Event  
+End Class
+
+//Class TestPublish
+
+//End Class 

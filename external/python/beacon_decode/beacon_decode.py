@@ -10,6 +10,7 @@ works for modules version 7-366
 gateway version GW 7-361, LPLan 7-408
 
 Nick Wateron 29th August 2016: V 1.0: Initial Release
+Nick Waterton 1st Nov 2016: V 1.1: Added Lowbattery data type
 '''
 
 #from __future__ import print_function  #if you want python 3 print function
@@ -28,7 +29,20 @@ global mqtt
 global udp
 global module
 global data_decode
-data_decode = {0:"None",1:"Version", 2:"Uptime",3:"BatteryVoltage",4:"Temperature",5:"Temperature2",6:"Humidity",7:"Dewpoint",8:"Pressure",9:"Altitude",10:"Motion",11:"Door",12:"Doorknock"}
+data_decode = { 0:"None",
+                1:"Version",
+                2:"Uptime",
+                3:"BatteryVoltage",
+                4:"Temperature",
+                5:"Temperature2",
+                6:"Humidity",
+                7:"Dewpoint",
+                8:"Pressure",
+                9:"Altitude",
+                10:"Motion",
+                11:"Door",
+                12:"Doorknock",
+                13:"LowBattery"}    #add new types of data here
 
 #----------- Start of Classes ------------
         

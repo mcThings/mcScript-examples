@@ -1,26 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <ProjectName>LISDH12_Test</ProjectName>
+  <ProjectName>TemperaturePublish</ProjectName>
   <DeviceType>mcMod120</DeviceType>
-  <LastDocumentName>LIS2DH12.mcScript</LastDocumentName>
+  <LastDocumentName>TemperaturePublish.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
-      <Name>LISDH12_Test</Name>
-      <FileSpec>LISDH12_Test.mcScript</FileSpec>
+      <Name>[Listing]</Name>
+      <FileSpec>TemperaturePublish.lst</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
-      <Name>LIS2DH12</Name>
-      <FileSpec>LIS2DH12.mcScript</FileSpec>
+      <Name>TemperaturePublish</Name>
+      <FileSpec>TemperaturePublish.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
       <Name>MQTT</Name>
-      <FileSpec>..\..\Examples\MQTT.mcScript</FileSpec>
+      <FileSpec>MQTT.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
@@ -28,13 +28,6 @@
     <DocumentSetting>
       <Name>TempSensor</Name>
       <FileSpec>..\..\Examples\TempSensor.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
-      <BreakPointLineNumbers />
-    </DocumentSetting>
-    <DocumentSetting>
-      <Name>[Listing]</Name>
-      <FileSpec>LISDH12_Test.lst</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />

@@ -1,0 +1,38 @@
+﻿Class Nextion 
+    
+    Shared serial As Uart
+    Shared PinTX As Pin
+    Shared PinRX As Pin
+    Shared baudRate As Integer
+    
+    Shared Function updateString(id As String, payload As String) As Boolean
+        Nextion.createUart()
+        serial.Write(id + ".txt=\x22" + payload + "\x22")
+        Nextion.endCommand()
+        Return True
+    End Function
+    
+    Shared Function updateImage(id As String, image As String) As Boolean
+        Nextion.createUart()
+        serial.Write(id + ".pic=" + image)
+        Nextion.endCommand()
+        Return True
+    End Function
+    
+    Shared Function endCommand() As Boolean
+        serial.Write(0xff)
+        serial.Write(0xff)
+        serial.Write(0xff)
+        Nextion.closeUart()
+        Return True
+    End Function
+    
+    Shared Function createUart() As Boolean       
+        serial = Uart.Create(baudRate, PinTX, PinRX)
+    End Function
+    
+    Shared Function closeUart() As Boolean
+        serial.Close
+    End Function
+    
+End Class

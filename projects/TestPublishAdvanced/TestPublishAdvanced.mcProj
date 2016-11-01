@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ProjectName>TestPublishAdvanced</ProjectName>
+  <DeviceType>mcMod110</DeviceType>
+  <LastDocumentName>TestPublishAdvanced.mcScript</LastDocumentName>
+  <DocumentSettings>
+    <DocumentSetting>
+      <FileSpec>TestPublishAdvanced.mcScript</FileSpec>
+      <Row>90</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+  </DocumentSettings>
+</ProjectSetting>

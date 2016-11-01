@@ -1185,37 +1185,73 @@ Class LIS2DH12
         Return read(WHO_AM_I)
     End Function
     
-    Public Sub SetRegister(reg As Byte)
-        Dim data As ListOfByte = New ListOfByte
-        data.Add(reg)
-        gAccelerometer.Write(data, False)
-    End Sub
-    
-    Public Function read(address As Byte) As Byte
-        // read single byte
-        SetRegister(address)
-        Dim result As Byte = UNDEFINED
-        Dim value As ListOfByte = gAccelerometer.Read(1, True)
+       Private Function Read(address As Byte) As Byte
+        Dim result As Byte = 0
+        Dim value As ListOfByte = Read(address, 1) // Read single byte
+        
         If value <> Nothing Then
             result = value(0)
         End If
         Return result
-    End Function
+    End Function // Read
     
-    Public Function read(address As Byte, length As Byte) As ListOfByte
-        //read multiple bytes
-        SetRegister(address)
-        Dim value As ListOfByte = gAccelerometer.Read(length, True)
-        Return value
-    End Function
     
-    Public Sub write(address As Byte, value As Byte)
-        //write single byte
+    Private Function Read(address As Byte, length As Byte) As ListOfByte
         Dim data As ListOfByte = New ListOfByte
+        
         data.Add(address)
+        gAccelerometer.Write(data, False)
+        
+        Return gAccelerometer.Read(length, True)
+    End Function // Read
+    
+    
+    Private Function Write(address As Byte, value As Byte) As Boolean
+        Dim data As ListOfByte = New ListOfByte
+        
         data.Add(value)
-        gAccelerometer.Write(data, True)
-    End Sub
+        
+        Return Write(address, data) // Write single byte
+    End Function // Write
+    
+    
+    Private Function Write(address As Byte, values As ListOfByte) As Boolean
+        values.InsertAt(0, address)
+        
+        Return gAccelerometer.Write(values, True)
+    End Function // Write
+    
+    'Public Sub SetRegister(reg As Byte)
+    '    Dim data As ListOfByte = New ListOfByte
+    '    data.Add(reg)
+    '    gAccelerometer.Write(data, False)
+    'End Sub
+    
+    'Public Function read(address As Byte) As Byte
+    '    // read single byte
+    '    SetRegister(address)
+    '    Dim result As Byte = UNDEFINED
+    '    Dim value As ListOfByte = gAccelerometer.Read(1, True)
+    '    If value <> Nothing Then
+    '        result = value(0)
+    '    End If
+    '    Return result
+    'End Function
+    
+    'Public Function read(address As Byte, length As Byte) As ListOfByte
+    '    //read multiple bytes
+    '    SetRegister(address)
+    '    Dim value As ListOfByte = gAccelerometer.Read(length, True)
+    '    Return value
+    'End Function
+    
+    'Public Sub write(address As Byte, value As Byte)
+    '    //write single byte
+    '    Dim data As ListOfByte = New ListOfByte
+    '    data.Add(address)
+    '    data.Add(value)
+    '    gAccelerometer.Write(data, True)
+    'End Sub
     
     'GetVersion() - returns version of this driver
     '

@@ -1,0 +1,506 @@
+﻿//
+// This example publishes the Uptime/Temperature/battery Voltage
+// Also Supports BME280 I2C sensor
+// Data also is published in the beacon data fields. This can be read via MQTT.
+//
+
+Enum BME280 As Byte
+    REGISTER_DIG_T1 = 0x88
+    REGISTER_DIG_T2 = 0x8a
+    REGISTER_DIG_T3 = 0x8c
+    
+    REGISTER_DIG_P1 = 0x8e
+    REGISTER_DIG_P2 = 0x90
+    REGISTER_DIG_P3 = 0x92
+    REGISTER_DIG_P4 = 0x94
+    REGISTER_DIG_P5 = 0x96
+    REGISTER_DIG_P6 = 0x98
+    REGISTER_DIG_P7 = 0x9a
+    REGISTER_DIG_P8 = 0x9c
+    REGISTER_DIG_P9 = 0x9e
+    
+    REGISTER_DIG_H1 = 0xa1
+    REGISTER_DIG_H2 = 0xe1
+    REGISTER_DIG_H3 = 0xe3
+    REGISTER_DIG_H4 = 0xe4
+    REGISTER_DIG_H5 = 0xe5
+    REGISTER_DIG_H6 = 0xe7
+    
+    REGISTER_CHIPID = 0xd0
+    REGISTER_VERSION = 0xd1
+    REGISTER_SOFTRESET = 0xe0
+    
+    REGISTER_CAL26 = 0xe1 // R calibration stored in 0xE1-0xF0
+    
+    REGISTER_CONTROLHUMID = 0xf2
+    REGISTER_STATUS = 0xf3
+    REGISTER_CONTROL = 0xf4
+    REGISTER_CONFIG = 0xf5
+    REGISTER_PRESSUREDATA = 0xf7
+    REGISTER_TEMPDATA = 0xfa
+    REGISTER_HUMIDDATA = 0xfd
+End Enum
+
+Enum mode As Byte
+    NORMAL_MODE = 0x01
+    FORCED_MODE = 0x02
+End Enum
+
+Class MQTT
+    Shared mcUIDString As String
+    
+    Shared Sub Publish(topic As String, value As String)
+        If mcUIDString = Nothing Then
+            mcUIDString = Device.mcUID().ToString("X8")
+        End If
+        Dim text_string As ListOfByte = New ListOfByte()
+        text_string.Add(value)
+        Lplan.Publish("MCThings/" + mcUIDString + "/" + topic, text_string)
+    End Sub
+    
+    Shared Sub Publish(topic As String, value As Object)
+        Dim text As String = value.ToString()
+        If mcUIDString = Nothing Then
+            mcUIDString = Device.mcUID().ToString("X8")
+        End If
+        Dim text_string As ListOfByte = New ListOfByte()
+        text_string.Add(text)
+        Lplan.Publish("MCThings/" + mcUIDString + "/" + topic, text_string)
+    End Sub
+    
+    Shared Sub Publish_exact(topic As String, text As String)
+        Dim text_String As ListOfByte = New ListOfByte()
+        text_String.Add(text)
+        Lplan.Publish(topic, text_String)
+    End Sub
+    
+    Shared Sub BeaconPublish(data_Type As Byte, data As Integer)
+        data = data & 0x0fffffff //blank top byte (can only send 24 bits maximum)
+        Dim hi_byte As Byte = ((data >> 16) & 0xff).ToByte()
+        Dim mid_byte As Byte = ((data >> 8) & 0xff).ToByte()
+        Dim low_byte As Byte = (data & 0xff).ToByte()
+        Dim beconData As ListOfByte = New ListOfByte()
+        beconData.Add(data_Type)
+        beconData.Add(hi_byte)
+        beconData.Add(mid_byte)
+        beconData.Add(low_byte)
+        Lplan.SetBeaconData(beconData)
+        Lplan.SendBeacon()
+    End Sub
+    
+    Shared Sub Subscribe(topic As String)
+        Lplan.Subscribe(topic)
+    End Sub
+    
+End Class
+
+Class Main
+    
+    //Shared BME280_1 As BME280_Sensor
+    //Shared Internal_Temp As TempSensor
+    Shared int_temp_sensor As I2c
+    Shared booted As Boolean
+    Shared count As Integer
+    
+    Shared Event Boot()
+        
+        booted = True
+        count = 5
+        //MQTT.Publish("Status", "Booted")
+        //BME280_1 = New BME280_Sensor()
+        //int_temp_sensor = I2c.Create(400000, Pin.SCL, Pin.SDA, 0x48)
+        //Internal_Temp = New TempSensor()      
+        
+    End Event
+    
+    //Shared Event GarbageCollect() RaiseEvent Every 1 Minutes
+    //Dim GC As Integer = Device.GarbageCollection()
+    //MQTT.Publish("GarbageCollection", GC)  
+    //End Event
+    
+    Shared Event Publish_Values() RaiseEvent Every 10 Seconds
+        LedGreen = True
+        
+        If booted Then
+            MQTT.Publish("Status", "Booted")
+            booted = False 
+        End If
+        //Dim BME280_1 As BME280_Sensor = New BME280_Sensor()
+        //If BME280_1.BME280_connected Then
+        //    Dim chipID As Byte = BME280_1.getChipID()
+        //MQTT.Publish("ChipID", chipID)
+        //MQTT.Publish("Status", "BME280_1 Connected")
+        //BME280_1.Connect()
+        
+        //Dim chipID As Byte = BME280_1.getChipID()
+        //MQTT.Publish("ChipID", chipID)
+        //BME280_1.Reset()
+        //Thread.Sleep(40000)
+        //Dim chipID2 As Byte = BME280_1.getChipID()
+        //MQTT.Publish("ChipID2", chipID2)
+        //BME280_1.Reset()
+        //BME280_1.readCoefficients()
+        //BME280_1.publishCoefficients()
+        //End If
+        //Dim chipID As Byte = BME280_Sensor.getChipID ()
+        
+        
+        Dim Internal_Temp As TempSensor = New TempSensor()
+        //Internal_Temp = New TempSensor()
+        //Internal_Temp.sensor = int_temp_sensor
+        Dim TempC As Float = Internal_Temp.GetTemp()
+        MQTT.Publish("Temperature", TempC)
+        Dim Uptime As Integer = Device.Uptime()
+        MQTT.Publish("Uptime", Uptime)
+        Dim BattVolt As Integer = Device.BatteryVoltage()
+        MQTT.Publish("BatteryVoltage", BattVolt)
+        Dim FreeMem As Integer = Device.MemoryAvailable()
+        MQTT.Publish("FreeMemory", FreeMem)
+        count = count + 1
+        MQTT.Publish("Count", count)
+        //Internal_Temp.count = Internal_Temp.count + 1
+        //MQTT.Publish("TempSensorCount", Internal_Temp.count)
+        
+        LedGreen = False
+        
+        If FreeMem < 3000 Then
+            MQTT.Publish("Status", "Garbage Collecting") 
+            Device.GarbageCollection()
+        End If
+    End Event  
+End Class
+
+
+//*=========================================================================*/
+
+Class BME280_Sensor
+    // Class To handle BME280 temperature/humidity/pressure BME280_I2C_sensor via I2C
+    //Supply voltage VDD main supply voltage range: 1.71 V to 3.6 V
+    //VDDIO interface voltage range: 1.2 V to 3.6 V
+    //Current consumption 1.8 μA @ 1 Hz humidity and temperature
+    //2.8 μA @ 1 Hz pressure and temperature
+    //3.6 μA @ 1 Hz humidity, pressure and temperature
+    //0.1 μA in sleep mode
+    
+    //Factory Calibration Factors
+    Public dig_T1 As Integer //converted from unsigned Short
+    Public dig_T2 As Integer //was Short
+    Public dig_T3 As Integer //was Short
+    
+    Public dig_P1 As Integer //converted from unsigned Short
+    Public dig_P2 As Integer //was Short
+    Public dig_P3 As Integer //was Short
+    Public dig_P4 As Integer //was Short
+    Public dig_P5 As Integer //was Short
+    Public dig_P6 As Integer //was Short
+    Public dig_P7 As Integer //was Short
+    Public dig_P8 As Integer //was Short
+    Public dig_P9 As Integer //was Short
+    
+    Public dig_H1 As Integer //was Byte
+    Public dig_H2 As Integer //was Short
+    Public dig_H3 As Integer //was Byte
+    Public dig_H4 As Integer //was Short
+    Public dig_H5 As Integer //was Short
+    Public dig_H6 As Integer //converted from signed Byte
+    
+    //raw values as read by readall()
+    Public temperature_raw As Integer
+    Public pressure_raw As Integer
+    Public humidity_raw As Integer
+    
+    //sensor mode
+    Public normal_mode As Boolean = True
+    
+    //Ambient Temperature adjustment, used in Humidity and Pressure calculations
+    Public t_fine As Integer
+    
+    Public BME280_I2C_sensor As I2c
+    Public BME280_connected As Boolean = False
+    
+    //Public Sub New()
+    
+    //BME280_I2C_sensor = I2c.Create(400000, Pin.SCL, Pin.SDA, 0x77)
+    
+    //End Sub
+    
+    Public Sub New()
+        BME280_I2C_sensor = I2c.Create(400000, Pin.SCL, Pin.SDA, 0x77)
+        Reset()
+        Thread.Sleep(40000)
+        write8(BME280.REGISTER_CONTROLHUMID, 0x05) //16x oversampling
+        normal_mode = True
+        write8(BME280.REGISTER_CONFIG, 0xa0) // normal mode samle rate 1000ms
+        write8(BME280.REGISTER_CONTROL, 0xb7) // 16x ovesampling, normal mode
+        BME280_connected = True
+    End Sub
+    
+    Public Sub Connect()
+        BME280_I2C_sensor = I2c.Create(400000, Pin.SCL, Pin.SDA, 0x77) 
+        BME280_connected = True 
+    End Sub
+    
+    Public Function getChipID() As Byte
+        //ChipID should be 0x60 (96 decimal)
+        //Dim BME280_I2C_sensor As I2c
+        //BME280_I2C_sensor = I2c.Create(400000, Pin.SCL, Pin.SDA, 0x77)
+        //Dim data As ListOfByte = New ListOfByte
+        //data.Add(BME280.REGISTER_CHIPID)
+        //BME280_I2C_sensor.Write(data)
+        //Dim result As Byte = 0
+        //Dim value As ListOfByte = BME280_I2C_sensor.Read(1)
+        //If value <> Nothing Then
+        //result = value(0)
+        //End If
+        //Dim status_text As String = "read8 0x" + value.ToString
+        //MQTT.Publish("Status", status_text)
+        //Return result
+        Return read8(BME280.REGISTER_CHIPID).ToByte()
+    End Function
+    
+    Public Sub Reset()
+        Dim data As ListOfByte = New ListOfByte
+        data.Add(BME280.REGISTER_SOFTRESET)
+        data.Add(0xb6)
+        BME280_I2C_sensor.Write(data)
+    End Sub
+    
+    //**************************************************************************/
+    //*!
+    //    @brief  Writes an 8 bit value over I2C
+    //*/
+    //**************************************************************************/
+    Public Sub SetRegister(reg As Byte)
+        Dim data As ListOfByte = New ListOfByte
+        data.Add(reg)
+        BME280_I2C_sensor.Write(data, True)
+    End Sub
+    
+    Public Sub write8(reg As Byte, value As Byte)
+        
+        Dim data As ListOfByte = New ListOfByte
+        data.Add(reg)
+        data.Add(value)
+        BME280_I2C_sensor.Write(data, True)
+        
+    End Sub
+    
+    //**************************************************************************/
+    //*!
+    //    @brief  Reads an unsigned 8 bit value over I2C
+    //*/
+    //**************************************************************************/
+    Public Function read8(reg As Byte) As Integer //should return unsigned Byte
+        
+        SetRegister(reg)
+        
+        Dim result As Short = 0
+        
+        Dim value As ListOfByte = BME280_I2C_sensor.Read(1, True)
+        If value <> Nothing Then
+            result = value(0)
+        End If
+        
+        Return result.ZeroExtend() //return unsigned Integer
+    End Function
+    
+    //**************************************************************************/
+    //*!
+    //    @brief  Reads a signed 8 bit value over I2C
+    //*/
+    //**************************************************************************/
+    Public Function readS8(reg As Byte) As Integer //should return signed Byte
+        Dim result As Byte = read8(reg).ToByte()
+        Return result.SignExtend() //return signed Integer
+    End Function
+    
+    //**************************************************************************/
+    //*!
+    //    @brief  Reads an unsigned 16 bit value over I2C
+    //*/
+    //**************************************************************************/
+    Public Function read16(reg As Byte) As Integer //should return unsigned Short
+        Dim result As Short = readS16(reg).ToShort()
+        Return result.ZeroExtend()
+    End Function
+    
+    Public Function read16_LE(reg As Byte) As Integer //should return unsigned Short
+        Dim result As Short = readS16_LE(reg).ToShort()
+        Return result.ZeroExtend()
+    End Function
+    
+    //**************************************************************************/
+    //*!
+    //    @brief  Reads a signed 16 bit value over I2C
+    //*/
+    //**************************************************************************/
+    Public Function readS16(reg As Byte) As Integer //should return Short
+        
+        SetRegister(reg)
+        
+        Dim result As Short = 0
+        
+        Dim value As ListOfByte = BME280_I2C_sensor.Read(2, True)
+        If value <> Nothing Then
+            result = (value(0) << 8) | value(1)
+        End If
+        
+        Return result
+    End Function
+    
+    Public Function readS16_LE(reg As Byte) As Integer //should return Short
+        Dim result As Short = readS16(reg).ToShort()
+        Return (result >> 8) | (result << 8)
+    End Function
+    
+    //**************************************************************************/
+    //*!
+    //    @brief  Reads a signed 24 bit value over I2C
+    //*/
+    //**************************************************************************/
+    
+    Public Function read24(reg As Byte) As Integer
+        
+        SetRegister(reg)
+        
+        Dim result As Integer = 0
+        
+        Dim value As ListOfByte = BME280_I2C_sensor.Read(3, True)
+        If value <> Nothing Then
+            result = (value(0) << 16) | (value(1) << 8) | value(2)
+        End If
+        
+        Return result
+    End Function
+    
+    //**************************************************************************/
+    //*!
+    //    @brief  Reads all values (temp/humid/press) values over I2C
+    //    reg is start register - to read all read 0xF7 to 0xFE (8 registers)
+    //*/
+    //**************************************************************************/
+    
+    Public Sub readall()
+        
+        SetRegister(0xf7)
+        
+        Dim value As ListOfByte = BME280_I2C_sensor.Read(8, True)
+        If value <> Nothing Then
+            temperature_raw = (value(0) << 16) | (value(1) << 8) | value(2)
+            pressure_raw = (value(3) << 16) | (value(4) << 8) | value(5)
+            humidity_raw = (value(6) << 8) | value(7)
+        End If
+        
+    End Sub
+    
+    //**************************************************************************/
+    //*!
+    //    @brief  Reads the factory-set coefficients
+    //*/
+    //**************************************************************************/
+    Public Sub readCoefficients()
+        
+        dig_T1 = read16_LE(BME280.REGISTER_DIG_T1)
+        dig_T2 = readS16_LE(BME280.REGISTER_DIG_T2)
+        dig_T3 = readS16_LE(BME280.REGISTER_DIG_T3)
+        
+        dig_P1 = read16_LE(BME280.REGISTER_DIG_P1)
+        dig_P2 = readS16_LE(BME280.REGISTER_DIG_P2)
+        dig_P3 = readS16_LE(BME280.REGISTER_DIG_P3)
+        dig_P4 = readS16_LE(BME280.REGISTER_DIG_P4)
+        dig_P5 = readS16_LE(BME280.REGISTER_DIG_P5)
+        dig_P6 = readS16_LE(BME280.REGISTER_DIG_P6)
+        dig_P7 = readS16_LE(BME280.REGISTER_DIG_P7)
+        dig_P8 = readS16_LE(BME280.REGISTER_DIG_P8)
+        dig_P9 = readS16_LE(BME280.REGISTER_DIG_P9)
+        
+        dig_H1 = read8(BME280.REGISTER_DIG_H1)
+        dig_H2 = readS16_LE(BME280.REGISTER_DIG_H2)
+        dig_H3 = read8(BME280.REGISTER_DIG_H3)
+        dig_H4 = (read8(BME280.REGISTER_DIG_H4) << 4) | (read8(BME280.REGISTER_DIG_H4 + 1) & 0x0f)
+        dig_H5 = (read8(BME280.REGISTER_DIG_H5 + 1) << 4) | (read8(BME280.REGISTER_DIG_H5) >> 4)
+        dig_H6 = readS8(BME280.REGISTER_DIG_H6) //convert to signed Integer
+    End Sub
+    
+    Public Sub publishCoefficients()
+        MQTT.Publish("dig_T1", dig_T1)
+        MQTT.Publish("dig_T2", dig_T2)
+        MQTT.Publish("dig_T3", dig_T3)
+        
+        MQTT.Publish("dig_P1", dig_P1)
+        MQTT.Publish("dig_P2", dig_P2)
+        MQTT.Publish("dig_P3", dig_P3)
+        MQTT.Publish("dig_P4", dig_P4)
+        MQTT.Publish("dig_P5", dig_P5)
+        MQTT.Publish("dig_P6", dig_P6)
+        MQTT.Publish("dig_P7", dig_P7)
+        MQTT.Publish("dig_P8", dig_P8)
+        MQTT.Publish("dig_P9", dig_P9)
+        
+        MQTT.Publish("dig_H1", dig_H1)
+        MQTT.Publish("dig_H2", dig_H2)
+        MQTT.Publish("dig_H3", dig_H3)
+        MQTT.Publish("dig_H4", dig_H4)
+        MQTT.Publish("dig_H5", dig_H5)
+        MQTT.Publish("dig_H6", dig_H6)
+    End Sub
+    
+End Class
+
+Class TempSensor
+    // Function returns the temperature in degree celcius or 
+    // Float.NaN if something is wrong
+    
+    Public sensor As I2c
+    Public count As Integer = 0
+    
+    Public Sub New()
+        sensor = I2c.Create(400000, Pin.SCL, Pin.SDA, 0x48)
+    End Sub
+    
+    Public Function GetTemp() As Float
+        // Define the properties of the I2C peripheral and device address
+        //Dim sensor As I2c
+        //sensor = I2c.Create(400000, Pin.SCL, Pin.SDA, 0x48)
+        
+        // Power up the sensor and give it some time to settle
+        Device.EnableTempSensor()
+        Thread.Sleep(40000) // See page 13 of the datasheet
+        
+        // Read the sensor (only 2 bytes to read
+        Dim res As ListOfByte = sensor.Read(2)
+        
+        // See Tmp102 documentation how to interpret the data (page 8)
+        Dim temp As Float = Float.NaN 
+        If res <> Nothing Then
+            // Shift the partial part to the right nibble
+            Dim part As Float = res(1) >> 4
+            // Temperature partial is 1/16*n where n is between 0 and 15            
+            part = part / 16
+            // Sign extend the byte to an integer
+            temp = res(0).SignExtend() + part
+        Else
+            LedRed = True
+            Thread.Sleep(50000)
+            LedRed = False
+        End If
+        
+        // power off
+        Device.DisableTempSensor()
+        Return temp
+    End Function
+    
+    Shared Function GetDieTemp() As Float
+        // Just get the temperature and return
+        Return Device.TempDie 
+    End Function
+    
+    Shared Function ToFarenheit(celcius As Float) As Float
+        Return (celcius * 9) / 5 + 32
+    End Function
+    
+    Shared Function ToCelcius(farenheit As Float) As Float
+        Return (farenheit - 32) * 5 / 9
+    End Function
+    
+End Class

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ProjectName>BeaconPublish</ProjectName>
+  <DeviceType>mcMod110</DeviceType>
+  <LastDocumentName>BeaconPublish.mcScript</LastDocumentName>
+  <DocumentSettings>
+    <DocumentSetting>
+      <Name>BeaconPublish</Name>
+      <FileSpec>BeaconPublish.mcScript</FileSpec>
+      <Row>8</Row>
+      <Col>16</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>TMP102</Name>
+      <FileSpec>TMP102.mcScript</FileSpec>
+      <Row>15</Row>
+      <Col>35</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>BME280</Name>
+      <FileSpec>BME280.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>MQTT</Name>
+      <FileSpec>..\..\Examples\MQTT.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+  </DocumentSettings>
+  <ManualCompile>false</ManualCompile>
+</ProjectSetting>

@@ -1,0 +1,489 @@
+' based on Adafruits TSL2561 library'
+' https://github.com/adafruit/Adafruit_TSL2561
+
+
+Class TSL2561Measurement 
+    Public broadband As Integer
+    Public ir As Integer
+    Public Sub New()
+        broadband = Nothing
+        ir = Nothing
+    End Sub
+    Public Function getBroadband() As Integer
+        Return broadband
+    End Function
+    Public Sub setBroadband(value As Integer)
+        broadband = value
+    End Sub
+    Public Function getIr() As Integer
+        Return ir
+    End Function
+    Public Sub setIr(value As Integer)
+        ir = value
+    End Sub
+End Class
+
+Class TSL2561
+    
+    ' Constants
+    Const I2C_NORMAL_SPEED As Integer = 250000
+    Const I2C_HiGH_SPEED As Integer = 400000
+    
+    ' Registers
+    Const TSL2561_REGISTER_CONTROL As Byte = 0x00
+    Const TSL2561_REGISTER_TIMING As Byte = 0x01
+    Const TSL2561_REGISTER_THRESHHOLDL_LOW As Byte = 0x02
+    Const TSL2561_REGISTER_THRESHHOLDL_HIGH As Byte = 0x03
+    Const TSL2561_REGISTER_THRESHHOLDH_LOW As Byte = 0x04
+    Const TSL2561_REGISTER_THRESHHOLDH_HIGH As Byte = 0x05
+    Const TSL2561_REGISTER_INTERRUPT As Byte = 0x06
+    Const TSL2561_REGISTER_CRC As Byte = 0x08
+    Const TSL2561_REGISTER_ID As Byte = 0x0a
+    Const TSL2561_REGISTER_CHAN0_LOW As Byte = 0x0c
+    Const TSL2561_REGISTER_CHAN0_HIGH As Byte = 0x0d
+    Const TSL2561_REGISTER_CHAN1_LOW As Byte = 0x0e
+    Const TSL2561_REGISTER_CHAN1_HIGH As Byte = 0x0f
+    
+    Const TSL2561_INTEGRATIONTIME_13MS As Byte = 0x00 ' 13.7ms
+    Const TSL2561_INTEGRATIONTIME_101MS As Byte = 0x01 ' 101ms
+    Const TSL2561_INTEGRATIONTIME_402MS As Byte = 0x02 ' 402ms
+    
+    Const TSL2561_GAIN_1X As Byte = 0x00 ' No gain
+    Const TSL2561_GAIN_16X As Byte = 0x10 ' 16x gain
+    
+    Const TSL2561_VISIBLE As Byte = 2 ' channel 0 - channel 1
+    Const TSL2561_INFRARED As Byte = 1 ' channel 1
+    Const TSL2561_FULLSPECTRUM As Byte = 0 ' channel 0
+    
+    ' 3 i2c address options!
+    Const TSL2561_ADDR_LOW As Byte = 0x29
+    Const TSL2561_ADDR_FLOAT As Byte = 0x39
+    Const TSL2561_ADDR_HIGH As Byte = 0x49
+    
+    ' Lux calculations differ slightly for CS package
+    'Const TSL2561_PACKAGE_CS
+    Const TSL2561_PACKAGE_T_FN_CL As Boolean = True
+    
+    Const TSL2561_READBIT As Byte = 0x01
+    
+    Const TSL2561_COMMAND_BIT As Byte = 0x80 ' Must be 1
+    Const TSL2561_CLEAR_BIT As Byte = 0x40 ' Clears any pending interrupt (write 1 to clear)
+    Const TSL2561_WORD_BIT As Byte = 0x20 ' 1 = read/write word (rather than byte)
+    Const TSL2561_BLOCK_BIT As Byte = 0x10 ' 1 = using block read/write
+    
+    Const TSL2561_CONTROL_POWERON As Byte = 0x03
+    Const TSL2561_CONTROL_POWEROFF As Byte = 0x00
+    
+    Const TSL2561_LUX_LUXSCALE As Byte = 14 ' Scale by 2^14
+    Const TSL2561_LUX_RATIOSCALE As Byte = 9 ' Scale ratio by 2^9
+    Const TSL2561_LUX_CHSCALE As Byte = 10 ' Scale channel values by 2^10
+    Const TSL2561_LUX_CHSCALE_TINT0 As Integer = 0x7517 ' 322/11 * 2^TSL2561_LUX_CHSCALE
+    Const TSL2561_LUX_CHSCALE_TINT1 As Integer = 0x0fe7 ' 322/81 * 2^TSL2561_LUX_CHSCALE
+    
+    ' T, FN and CL package values
+    Const TSL2561_LUX_K1T As Integer = 0x0040 ' 0.125 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B1T As Integer = 0x01f2 ' 0.0304 * 2^LUX_SCALE
+    Const TSL2561_LUX_M1T As Integer = 0x01be ' 0.0272 * 2^LUX_SCALE
+    Const TSL2561_LUX_K2T As Integer = 0x0080 ' 0.250 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B2T As Integer = 0x0214 ' 0.0325 * 2^LUX_SCALE
+    Const TSL2561_LUX_M2T As Integer = 0x02d1 ' 0.0440 * 2^LUX_SCALE
+    Const TSL2561_LUX_K3T As Integer = 0x00c0 ' 0.375 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B3T As Integer = 0x023f ' 0.0351 * 2^LUX_SCALE
+    Const TSL2561_LUX_M3T As Integer = 0x037b ' 0.0544 * 2^LUX_SCALE
+    Const TSL2561_LUX_K4T As Integer = 0x0100 ' 0.50 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B4T As Integer = 0x0270 ' 0.0381 * 2^LUX_SCALE
+    Const TSL2561_LUX_M4T As Integer = 0x03fe ' 0.0624 * 2^LUX_SCALE
+    Const TSL2561_LUX_K5T As Integer = 0x0138 ' 0.61 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B5T As Integer = 0x016f ' 0.0224 * 2^LUX_SCALE
+    Const TSL2561_LUX_M5T As Integer = 0x01fc ' 0.0310 * 2^LUX_SCALE
+    Const TSL2561_LUX_K6T As Integer = 0x019a ' 0.80 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B6T As Integer = 0x00d2 ' 0.0128 * 2^LUX_SCALE
+    Const TSL2561_LUX_M6T As Integer = 0x00fb ' 0.0153 * 2^LUX_SCALE
+    Const TSL2561_LUX_K7T As Integer = 0x029a ' 1.3 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B7T As Integer = 0x0018 ' 0.00146 * 2^LUX_SCALE
+    Const TSL2561_LUX_M7T As Integer = 0x0012 ' 0.00112 * 2^LUX_SCALE
+    Const TSL2561_LUX_K8T As Integer = 0x029a ' 1.3 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B8T As Integer = 0x0000 ' 0.000 * 2^LUX_SCALE
+    Const TSL2561_LUX_M8T As Integer = 0x0000 ' 0.000 * 2^LUX_SCALE
+    
+    ' CS package values
+    Const TSL2561_LUX_K1C As Integer = 0x0043 ' 0.130 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B1C As Integer = 0x0204 ' 0.0315 * 2^LUX_SCALE
+    Const TSL2561_LUX_M1C As Integer = 0x01ad ' 0.0262 * 2^LUX_SCALE
+    Const TSL2561_LUX_K2C As Integer = 0x0085 ' 0.260 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B2C As Integer = 0x0228 ' 0.0337 * 2^LUX_SCALE
+    Const TSL2561_LUX_M2C As Integer = 0x02c1 ' 0.0430 * 2^LUX_SCALE
+    Const TSL2561_LUX_K3C As Integer = 0x00c8 ' 0.390 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B3C As Integer = 0x0253 ' 0.0363 * 2^LUX_SCALE
+    Const TSL2561_LUX_M3C As Integer = 0x0363 ' 0.0529 * 2^LUX_SCALE
+    Const TSL2561_LUX_K4C As Integer = 0x010a ' 0.520 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B4C As Integer = 0x0282 ' 0.0392 * 2^LUX_SCALE
+    Const TSL2561_LUX_M4C As Integer = 0x03df ' 0.0605 * 2^LUX_SCALE
+    Const TSL2561_LUX_K5C As Integer = 0x014d ' 0.65 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B5C As Integer = 0x0177 ' 0.0229 * 2^LUX_SCALE
+    Const TSL2561_LUX_M5C As Integer = 0x01dd ' 0.0291 * 2^LUX_SCALE
+    Const TSL2561_LUX_K6C As Integer = 0x019a ' 0.80 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B6C As Integer = 0x0101 ' 0.0157 * 2^LUX_SCALE
+    Const TSL2561_LUX_M6C As Integer = 0x0127 ' 0.0180 * 2^LUX_SCALE
+    Const TSL2561_LUX_K7C As Integer = 0x029a ' 1.3 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B7C As Integer = 0x0037 ' 0.00338 * 2^LUX_SCALE
+    Const TSL2561_LUX_M7C As Integer = 0x002b ' 0.00260 * 2^LUX_SCALE
+    Const TSL2561_LUX_K8C As Integer = 0x029a ' 1.3 * 2^RATIO_SCALE
+    Const TSL2561_LUX_B8C As Integer = 0x0000 ' 0.000 * 2^LUX_SCALE
+    Const TSL2561_LUX_M8C As Integer = 0x0000 ' 0.000 * 2^LUX_SCALE
+    
+    ' Auto-gain thresholds
+    Const TSL2561_AGC_THI_13MS As Integer = 4850 ' Max value at Ti 13ms = 5047
+    Const TSL2561_AGC_TLO_13MS As Integer = 100
+    Const TSL2561_AGC_THI_101MS As Integer = 36000 ' Max value at Ti 101ms = 37177
+    Const TSL2561_AGC_TLO_101MS As Integer = 200 
+    Const TSL2561_AGC_THI_402MS As Integer = 63000 ' Max value at Ti 402ms = 65535
+    Const TSL2561_AGC_TLO_402MS As Integer = 500 
+    
+    ' Clipping thresholds
+    Const TSL2561_CLIPPING_13MS As Integer = 4900
+    Const TSL2561_CLIPPING_101MS As Integer = 37000
+    Const TSL2561_CLIPPING_402MS As Integer = 65000
+    
+    Const TSL2561_DELAY_INTTIME_13MS As Integer = 15 * 1000 ' microseconds used here
+    Const TSL2561_DELAY_INTTIME_101MS As Integer = 120 * 1000 ' microseconds used here
+    Const TSL2561_DELAY_INTTIME_402MS As Integer = 450 * 1000 ' microseconds used here
+    
+    Private gI2C As I2c
+    Private gAddr As ListOfByte 
+    Private gData As ListOfByte
+    Private _tsl2561IntegrationTime As Byte
+    Private _tsl2561Gain As Byte
+    Private _tsl2561AutoGain As Boolean
+    Private _tsl2561Initialized As Boolean
+    
+    Public Sub New(addr As Byte)
+        gI2C = I2c.Create(I2C_NORMAL_SPEED, Pin.SCL, Pin.SDA, addr)
+        Thread.Sleep(25000)
+        gAddr = New ListOfByte()
+        gData = New ListOfByte()
+        _tsl2561IntegrationTime = TSL2561_INTEGRATIONTIME_13MS 
+        _tsl2561Gain = TSL2561_GAIN_1X
+        _tsl2561AutoGain = False
+        _tsl2561Initialized = False
+    End Sub
+    
+    '
+    ' Initializes I2C and configures the sensor (call this function before
+    ' doing anything else)
+    '
+    Public Function begin() As Boolean
+        Dim dataByte As Byte
+        
+        ' Make sure we're actually connected
+        dataByte = ReadSingleByte(TSL2561_REGISTER_ID)
+        dataByte = dataByte & 0x0a
+        If dataByte = 0 Then
+            _tsl2561Initialized = False
+            Return _tsl2561Initialized
+        End If 
+        
+        ' Set default integration time and gain
+        _tsl2561Initialized = True
+        setGain(_tsl2561Gain)
+        setIntegrationTime(_tsl2561IntegrationTime)
+        
+        ' Note: by default, the device is in power down mode on bootup
+        disable()
+        Return _tsl2561Initialized
+    End Function
+    
+    Public Sub disable()
+        WriteSingleByte(TSL2561_COMMAND_BIT | TSL2561_REGISTER_CONTROL, TSL2561_CONTROL_POWEROFF)
+    End Sub
+    
+    Public Sub enable()
+        WriteSingleByte(TSL2561_COMMAND_BIT | TSL2561_REGISTER_CONTROL, TSL2561_CONTROL_POWERON)
+    End Sub
+    
+    '
+    ' Enables or disables the auto-gain settings when reading
+    ' data from the sensor
+    '
+    Public Sub enableAutoRegion(enableFlag As Boolean)
+        If enableFlag Then
+            _tsl2561AutoGain = True
+        Else
+            _tsl2561AutoGain = False
+        End If
+    End Sub
+    
+    '
+    ' Adjusts the gain on the TSL2561 (adjusts the sensitivity to light)
+    '
+    Public Sub setGain(gain As Byte)
+        If Not (_tsl2561Initialized) Then
+            begin()
+        End If
+        
+        ' Enable the device
+        enable()
+        
+        ' Update the timing register
+        WriteSingleByte(TSL2561_COMMAND_BIT | TSL2561_REGISTER_TIMING, _tsl2561IntegrationTime | gain)
+        
+        ' Update value placeholders
+        _tsl2561Gain = gain  
+        
+        ' Turn the device off to save power      
+        disable()
+    End Sub
+    
+    
+    '
+    ' Sets the integration time for the TSL2561
+    '
+    Public Sub setIntegrationTime(timing As Byte)
+        If Not (_tsl2561Initialized) Then
+            begin()
+        End If
+        
+        ' Enable the device
+        enable()
+        
+        ' Update the timing register
+        WriteSingleByte(TSL2561_COMMAND_BIT | TSL2561_REGISTER_TIMING, timing | _tsl2561Gain)
+        
+        ' Update value placeholders
+        _tsl2561IntegrationTime = timing
+        
+        ' Turn the device off to save power   
+        disable()
+    End Sub
+    
+    '
+    ' Gets the broadband (mixed lighting) and IR only values from
+    ' the TSL2561, adjusting gain if auto-gain is enabled
+    '
+    Public Function getLuminosity() As TSL2561Measurement
+        Dim result As TSL2561Measurement = New TSL2561Measurement()
+        If Not (_tsl2561Initialized) Then
+            begin()
+        End If
+        
+        ' If Auto gain disabled get a single reading and continue
+        If Not (_tsl2561AutoGain) Then
+            getData(result)
+            Return result
+        End If
+        
+        ' Auto-Gain
+        ' Read data until we find a valid range
+        
+        Dim _agcCheck As Boolean = False
+        Dim valid As Boolean = False
+        Do
+            Dim _hi As Integer
+            Dim _lo As Integer
+            Dim _it As Integer = _tsl2561IntegrationTime
+            
+            ' Get the hi/low threshold for the current integration time
+            If _it = TSL2561_INTEGRATIONTIME_13MS Then
+                _hi = TSL2561_AGC_THI_13MS
+                _lo = TSL2561_AGC_TLO_13MS
+            ElseIf _it = TSL2561_INTEGRATIONTIME_101MS Then
+                _hi = TSL2561_AGC_THI_101MS
+                _lo = TSL2561_AGC_TLO_101MS
+            ElseIf _it = TSL2561_INTEGRATIONTIME_402MS Then
+                _hi = TSL2561_AGC_THI_402MS
+                _lo = TSL2561_AGC_TLO_402MS
+            End If
+            
+            getData(result)
+            
+            ' Run an auto-gain check if we haven't already done so ...
+            If Not (_agcCheck) Then
+                If ((result.getBroadband() < _lo) And (_tsl2561Gain = TSL2561_GAIN_1X)) Then
+                    ' Increase the gain and try again
+                    setGain(TSL2561_GAIN_16X)
+                    ' Drop the previous conversion results
+                    getData(result)
+                    ' Set a flag to indicate we've adjusted the gain
+                    _agcCheck = True
+                ElseIf ((result.getBroadband() > _hi) And (_tsl2561Gain = TSL2561_GAIN_16X)) Then
+                    ' Drop gain to 1x and try again
+                    setGain(TSL2561_GAIN_1X)
+                    ' Drop the previous conversion results
+                    getData(result)
+                    ' Set a flag to indicate we've adjusted the gain
+                    _agcCheck = True
+                Else
+                    ' Nothing to look at here, keep moving ....
+                    ' Reading Is either valid, Or we're already at the chips limits
+                    valid = True
+                End If
+            Else
+                ' If we've already adjusted the gain once, just return the new results.
+                ' This avoids endless loops where a value is at one extreme pre-gain,
+                ' and the the other extreme post-gain
+                valid = True
+            End If
+        While (Not (valid))
+        Return result
+    End Function
+    
+    '
+    ' Converts the raw sensor values to the standard SI lux equivalent.
+    ' Returns 0 if the sensor is saturated and the values are unreliable.
+    '
+    Public Function calculateLux(value As TSL2561Measurement) As Integer
+        Dim chScale As Integer = 0
+        Dim channel0 As Integer = 0
+        Dim channel1 As Integer = 0
+        
+        ' Make sure the sensor isn't saturated!
+        ' Get the correct scale depending on the intergration time
+        Dim clipThreshold As Integer
+        Select _tsl2561IntegrationTime
+            Case TSL2561_INTEGRATIONTIME_13MS
+                clipThreshold = TSL2561_CLIPPING_13MS
+                chScale = TSL2561_LUX_CHSCALE_TINT0
+            Case TSL2561_INTEGRATIONTIME_101MS
+                clipThreshold = TSL2561_CLIPPING_101MS
+                chScale = TSL2561_LUX_CHSCALE_TINT1
+            Case TSL2561_INTEGRATIONTIME_402MS
+                clipThreshold = TSL2561_CLIPPING_402MS
+                'No scaling ... integration time = 402ms
+                chScale = (1 << TSL2561_LUX_CHSCALE)
+        End Select
+        
+        ' Return 65536 lux if the sensor is saturated
+        If ((value.getBroadband() > clipThreshold) Or (value.getIr() > clipThreshold)) Then
+            Return 65536 
+        End If
+        
+        ' Scale for gain (1x or 16x)
+        If _tsl2561Gain = TSL2561_GAIN_16X Then
+            chScale = chScale << 4
+        End If
+        
+        ' Scale the channel values
+        channel0 = (value.getBroadband() * chScale) >> TSL2561_LUX_CHSCALE
+        channel1 = (value.getIr() * chScale) >> TSL2561_LUX_CHSCALE
+        
+        ' Find the ratio of the channel values (Channel1/Channel0)
+        Dim ratio1 As Integer = 0
+        If channel0 = 0 Then
+            ratio1 = (channel1 << (TSL2561_LUX_RATIOSCALE + 1)) / channel0 
+        End If
+        ' round the ratio value
+        Dim ratio As Integer = (ratio1 + 1) >> 1
+        Dim b As Integer
+        Dim m As Integer
+        
+        If ((ratio >= 0) And (ratio <= TSL2561_LUX_K1T)) Then
+            b = TSL2561_LUX_B1T
+            m = TSL2561_LUX_M1T 
+        ElseIf (ratio <= TSL2561_LUX_K2T) Then
+            b = TSL2561_LUX_B2T 
+            m = TSL2561_LUX_M2T
+        ElseIf (ratio <= TSL2561_LUX_K3T) Then
+            b = TSL2561_LUX_B3T 
+            m = TSL2561_LUX_M3T
+        ElseIf (ratio <= TSL2561_LUX_K4T) Then
+            b = TSL2561_LUX_B4T 
+            m = TSL2561_LUX_M4T
+        ElseIf (ratio <= TSL2561_LUX_K5T) Then
+            b = TSL2561_LUX_B5T 
+            m = TSL2561_LUX_M5T
+        ElseIf (ratio <= TSL2561_LUX_K6T) Then
+            b = TSL2561_LUX_B6T 
+            m = TSL2561_LUX_M6T
+        ElseIf (ratio <= TSL2561_LUX_K7T) Then
+            b = TSL2561_LUX_B7T 
+            m = TSL2561_LUX_M7T
+        ElseIf (ratio > TSL2561_LUX_K8T) Then
+            b = TSL2561_LUX_B8T 
+            m = TSL2561_LUX_M8T
+        End If
+        
+        Dim temp As Integer
+        temp = ((channel0 * b) - (channel1 * m))
+        
+        ' Do not allow negative lux value
+        If temp < 0 Then 
+            temp = 0
+        End If
+        
+        ' Round lsb (2^(LUX_SCALE-1)) */
+        temp += (1 << (TSL2561_LUX_LUXSCALE - 1))
+        
+        ' Strip off fractional portion
+        Dim lux As Integer
+        lux = temp >> TSL2561_LUX_LUXSCALE
+        
+        ' Signal I2C had no errors
+        Return lux
+        
+    End Function
+    
+    '
+    ' Private function to read luminosity on both channels
+    '
+    
+    Private Sub getData(data As TSL2561Measurement)
+        Dim data_low As Integer = 0
+        Dim data_high As Integer = 0
+        
+        ' Enable the device by setting the control bit
+        enable()
+        
+        ' Wait x ms for ADC to complete
+        Select _tsl2561IntegrationTime
+            Case TSL2561_INTEGRATIONTIME_13MS
+                Thread.Delay(TSL2561_DELAY_INTTIME_13MS)
+            Case TSL2561_INTEGRATIONTIME_101MS
+                Thread.Delay(TSL2561_DELAY_INTTIME_101MS)
+            Case TSL2561_INTEGRATIONTIME_402MS
+                Thread.Delay(TSL2561_DELAY_INTTIME_402MS)
+        End Select
+        
+        ' Reads a two byte value from channel 0 (visible + infrared)
+        data_low = ReadSingleByte(TSL2561_COMMAND_BIT | TSL2561_REGISTER_CHAN0_LOW)
+        data_high = ReadSingleByte(TSL2561_COMMAND_BIT | TSL2561_REGISTER_CHAN0_HIGH)
+        data.setBroadband(data_high << 8 | data_low)
+        
+        ' Reads a two byte value from channel 1 (infrared)
+        data_low = ReadSingleByte(TSL2561_COMMAND_BIT | TSL2561_REGISTER_CHAN1_LOW)
+        data_high = ReadSingleByte(TSL2561_COMMAND_BIT | TSL2561_REGISTER_CHAN1_HIGH)
+        data.setIr(data_high << 8 | data_low)
+        
+        ' Turn the device off to save power
+        disable()
+    End Sub
+    
+    Private Function WriteSingleByte(reg_addr As Byte, data_byte As Byte) As Boolean
+        Dim result As Boolean = False
+        
+        gAddr.Clear()
+        gAddr.Add(reg_addr)
+        gAddr.Add(data_byte) 
+        result = gI2C.Write(gAddr, True)
+        
+        Return result
+    End Function
+    
+    Private Function ReadSingleByte(reg_addr As Byte) As Byte
+        Dim result As Byte
+        
+        gAddr.Clear()
+        gData.Clear()
+        gAddr.Add(reg_addr)     
+        gI2C.Write(gAddr, False)
+        gData = gI2C.Read(1, True)
+        
+        If gData = Nothing Then
+            gData = New ListOfByte()
+            Return Nothing
+        End If
+        result = gData(0)
+        
+        Return result
+    End Function    
+    
+End Class

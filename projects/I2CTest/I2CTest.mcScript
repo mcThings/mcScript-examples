@@ -1,0 +1,79 @@
+﻿//
+// This example publishes the Temperature and battery Voltage
+// in the beacon data fields. This can be read via MQTT.
+//
+
+Enum dataType As Byte
+    NONE = 0
+    UPTIME = 1
+    BATTVOLTAGE = 2
+    TEMPERATURE = 3
+    TEMPERATURE2 = 4
+    HUMIDITY = 5
+    PRESSURE = 6
+    ALTITUDE = 7
+    MOTION = 8
+End Enum
+
+Class Events
+    
+    Shared data As dataType
+    
+    Shared Event Publish() RaiseEvent Every 10 Seconds
+        LedGreen = True
+        Dim Sensors As Values = New Values
+        Dim offline_String As ListOfByte = New ListOfByte()
+        offline_String.Add("Online")
+        
+        Select data
+            Case dataType.UPTIME
+                Lplan.Publish("MCThings/" + Sensors.mcUIDString + "/Uptime", Sensors.GetUptime)
+                //increment data
+                data = dataType.BATTVOLTAGE
+            Case dataType.BATTVOLTAGE
+                Lplan.Publish("MCThings/" + Sensors.mcUIDString + "/BatteryVoltage", Sensors.GetBattVoltage)
+                //increment data
+                data = dataType.TEMPERATURE
+            Case dataType.TEMPERATURE
+                Lplan.Publish("MCThings/" + Sensors.mcUIDString + "/Temperature", Sensors.GetTemp)
+                //increment data
+                data = dataType.TEMPERATURE
+            Case Else
+                Lplan.Publish("MCThings/" + Sensors.mcUIDString + "/Status", offline_String)
+                //start loop
+                data = dataType.UPTIME
+        End Select
+        //Lplan.Publish("MCThings/" + Sensors.mcUIDString + "/Uptime", Sensors.GetUptime)
+        //Lplan.Publish("MCThings/" + Sensors.mcUIDString + "/BatteryVoltage", Sensors.GetBattVoltage)
+        //Lplan.Publish("MCThings/" + Sensors.mcUIDString + "/Temperature", Sensors.GetTemp) 
+        LedGreen = False
+    End Event  
+End Class
+
+Class Values    
+    Public mcUIDString As String = Device.mcUID().ToString()
+    
+    Public Function GetTemp() As ListOfByte       
+        Dim TempC As Float = TempSensor.GetTemp
+        Dim TempString As String = TempC.ToString()
+        Dim Temppayload As ListOfByte = New ListOfByte()     
+        Temppayload.Add(TempString)
+        Return Temppayload      
+    End Function
+    
+    Public Function GetUptime() As ListOfByte    
+        Dim uptime As Integer = Device.Uptime()
+        Dim uptimeString As String = uptime.ToString()
+        Dim Uptimepayload As ListOfByte = New ListOfByte()  
+        Uptimepayload.Add(uptimeString)
+        Return Uptimepayload
+    End Function
+    
+    Public Function GetBattVoltage() As ListOfByte
+        Dim BattVolt As Short = Device.BatteryVoltage
+        Dim BattString As String = BattVolt.ToString()
+        Dim Battpayload As ListOfByte = New ListOfByte()
+        Battpayload.Add(BattString)
+        Return Battpayload       
+    End Function
+End Class 

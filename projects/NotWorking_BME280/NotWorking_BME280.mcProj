@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ProjectName>NotWorking_BME280</ProjectName>
+  <DeviceType>mcMod110</DeviceType>
+  <LastDocumentName>..\BeaconPublish\BeaconPublish.mcScript</LastDocumentName>
+  <DocumentSettings>
+    <DocumentSetting>
+      <FileSpec>..\BeaconPublish\BeaconPublish.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <FileSpec>..\BeaconPublish\BME280.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <FileSpec>..\..\Examples\TempSensor.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+  </DocumentSettings>
+</ProjectSetting>

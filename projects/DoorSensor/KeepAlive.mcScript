@@ -1,0 +1,35 @@
+﻿//resets module if it stops publishing
+//workaround for issue
+
+Class KeepAlive
+    Const Version As String = "V1.0"
+    Shared Sub_Topic_Keep_alive As String
+    Shared Keep_Alive_Timer As Integer
+    Shared Timeout As Integer
+    
+    Shared Sub Init(Timeout_value As Integer)
+        Sub_Topic_Keep_alive = "MCThings/" + Device.mcUID().ToString("X8") + "/" + "KeepAlive"
+        Keep_Alive_Timer = 0
+        If Timeout_value < 180 Then
+            Timeout_value = 180
+        End If
+        Timeout = Timeout_value
+        Lplan.Subscribe(Sub_Topic_Keep_alive, QoS.ExactlyOnce)
+    End Sub
+    
+    Shared Sub Process_Keepalive()
+        Keep_Alive_Timer = Device.Uptime()
+    End Sub
+    
+    Shared Event KeepAlive() RaiseEvent Every 1 Minutes //workaround stop publishing problem
+        If Device.Uptime() >= 60 Then
+            Dim text_string As ListOfByte = New ListOfByte()
+            text_string.Add("Alive")
+            Lplan.Publish(Sub_Topic_Keep_alive, text_string, QoS.ExactlyOnce)
+            If Device.Uptime() - Keep_Alive_Timer > Timeout Then // Timeout seconds (5 minutes) with no publishing = reset
+                Error.ThrowException(Error.Application, 0)
+            End If
+        End If
+    End Event
+    
+End Class

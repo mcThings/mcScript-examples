@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <ProjectName>DoorSensor</ProjectName>
+  <ProjectName>NextionTest</ProjectName>
   <DeviceType>mcMod110</DeviceType>
-  <LastDocumentName>DoorSensor.mcScript</LastDocumentName>
+  <LastDocumentName>..\..\Examples\MQTT.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
-      <Name>DoorSensor</Name>
-      <FileSpec>DoorSensor.mcScript</FileSpec>
+      <Name>NextionTest</Name>
+      <FileSpec>NextionTest.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
-      <Name>TempSensor</Name>
-      <FileSpec>..\..\Examples\TempSensor.mcScript</FileSpec>
+      <Name>Nextion</Name>
+      <FileSpec>Nextion.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
@@ -21,20 +21,6 @@
     <DocumentSetting>
       <Name>MQTT</Name>
       <FileSpec>..\..\Examples\MQTT.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
-      <BreakPointLineNumbers />
-    </DocumentSetting>
-    <DocumentSetting>
-      <Name>MMA8652</Name>
-      <FileSpec>..\..\Examples\MMA8652.mcscript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
-      <BreakPointLineNumbers />
-    </DocumentSetting>
-    <DocumentSetting>
-      <Name>[Listing]</Name>
-      <FileSpec>DoorSensor.lst</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />

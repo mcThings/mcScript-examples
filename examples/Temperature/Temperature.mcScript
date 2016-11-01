@@ -1,8 +1,4 @@
-﻿//
-// This example logs the mc Unique IDentifier (mcUID) and the Temperature 
-// to IFTTT.
-//
-Class Temperature
+﻿Class Temperature
     Shared Event GetTemp() RaiseEvent Every 1 Minutes
         LedGreen = True
         

@@ -541,11 +541,11 @@ Class MMA8652
     End Function
     
     Public Sub SetSleepMode(mode As Byte)
-        write(CTRL_REG2, (read(CTRL_REG2) & ~SLPE_MASK) | mode) // clear bit 3, set sleep mode
+        write(CTRL_REG2, (read(CTRL_REG2) & ~SLPE_MASK) | mode) // clear bit 2, set sleep mode
     End Sub
     
     Public Function GetSleepMode() As Byte
-        Return read(CTRL_REG2) & SLPE_MASK // read bit 3
+        Return read(CTRL_REG2) & SLPE_MASK // read bit 2
     End Function
     
     Public Sub SetSleepModeFrequency(frequency As Byte)
@@ -582,11 +582,11 @@ Class MMA8652
     End Function
     
     Public Sub SetSleepModeResolution(resolution As Byte)
-        write(CTRL_REG2, (read(CTRL_REG2) & ~SMODS_MASK) | resolution) // clear bits 4 and 5, set sleep mode resolution
+        write(CTRL_REG2, (read(CTRL_REG2) & ~SMODS_MASK) | resolution) // clear bits 3 and 4, set sleep mode resolution
     End Sub
     
     Public Function GetSleepModeResolution() As Byte
-        Return read(CTRL_REG2) & SMODS_MASK // read bits 4 and 5
+        Return read(CTRL_REG2) & SMODS_MASK // read bits 3 and 4
     End Function
     
     Public Sub SetSleepModeInterrupts(interrupts As Byte)
@@ -759,9 +759,9 @@ Class MMA8652
             Thread.Sleep(15000) // wait for a new data reading (100 Hz)
         Next
         
-        accel_bias(0) = accel_bias(0) / fcount // get average values
-        accel_bias(1) = accel_bias(1) / fcount
-        accel_bias(2) = accel_bias(2) / fcount
+        accel_bias(0) = (accel_bias(0) / fcount).ToInteger// get average values
+        accel_bias(1) = (accel_bias(1) / fcount).ToInteger
+        accel_bias(2) = (accel_bias(2) / fcount).ToInteger
         
         If (accel_bias(2) > 0) Then
             accel_bias(2) -= accelsensitivity // Remove gravity from the z-axis accelerometer bias calculation
@@ -804,9 +804,9 @@ Class MMA8652
             'set duration (in ms) before device auto sleeps (set wake mode frequency first)
             SetSleepModeDuration(2000)
             'Low Power Mode (sleep mode on)
-            SetSleepMode(SLPE_MASK) // clear bit 3, enable sleep mode
+            SetSleepMode(SLPE_MASK) // clear bit 2, then set bit 2 enable sleep mode
             'set Awake resolution
-            SetWakeModeResolution(MOD_LOW_POWER) // clear bits 0 and 1, sent wake low power mode
+            SetWakeModeResolution(MOD_LOW_POWER) // clear bits 0 and 1, set wake low power mode
             'set Sleep resolution
             SetSleepModeResolution(SMOD_LOW_POWER) // clear bits 4 and 5, set sleep mode low power
             'Wakeup if transient interrupt, push/pull, active low (set in New config)

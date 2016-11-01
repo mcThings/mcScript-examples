@@ -1,14 +1,14 @@
 ﻿//
 // This example publishes the Uptime/Temperature/battery Voltage
-// Plus values from BME280 I2C sensor (temperature2, Humidity, dew point, pressure, altitude)
+// Also Supports BME280 I2C sensor
 // Data also is published in the beacon data fields. This can be read via MQTT.
-// Requires TempSensor, MQTT and BME280 libraries.
 //
 
 Class Main
     
     Shared SeaLevelPressure As Float
     Shared data As dataType
+    Shared Internal_Sensor As TMP102
     Shared BME280_1 As BME280
     Const SLP_Topic As String = "MCThings/SeaLevelPressure"
     Const Sub_Topic As String = "MCThings/Publish"
@@ -18,10 +18,11 @@ Class Main
         data = dataType.UPTIME
         Publish_data = True
         SeaLevelPressure = 1013.25 //standard Mean Sea Level Pressure
+        Internal_Sensor = New TMP102
         BME280_1 = New BME280
         If BME280_1.online Then
             MQTT.Publish("Status", "BME280 Online")
-            BME280_1.setMode(BME280.FORCED) //set to read-on-demand mode (this is default anyway)
+            BME280_1.setMode(BME280.FORCED) //set to read-on-demand mode
         End If
         MQTT.Subscribe(SLP_Topic)
         MQTT.Subscribe(Sub_Topic)
@@ -65,9 +66,7 @@ Class Main
                 If Publish_data Then
                     MQTT.Publish("Uptime", Uptime)
                 End If
-                If Uptime < Short.MaxValue Then
-                    MQTT.BeaconPublish(dataType.UPTIME, Uptime)
-                End If
+                MQTT.BeaconPublish(dataType.UPTIME, Uptime)
                 data = dataType.BATTVOLTAGE
             Case dataType.BATTVOLTAGE
                 Dim BattVolt As Integer = Device.BatteryVoltage()
@@ -77,7 +76,7 @@ Class Main
                 MQTT.BeaconPublish(dataType.BATTVOLTAGE, BattVolt)
                 data = dataType.TEMPERATURE
             Case dataType.TEMPERATURE
-                Dim TempC As Float = TempSensor.GetTemp
+                Dim TempC As Float = Internal_Sensor.GetTemp
                 If Publish_data Then
                     MQTT.Publish("Temperature", TempC)
                 End If
@@ -128,6 +127,8 @@ Class Main
                 Dim Altitude As Float = BME280_1.readAltitude(SeaLevelPressure)
                 If Publish_data Then
                     MQTT.Publish("Altitude", Altitude)
+                    'Dim A_Factor As Float = BME280_1.A_factor
+                    'MQTT.Publish("Factor", A_Factor)
                 End If
                 MQTT.BeaconPublish(dataType.ALTITUDE, Altitude)
                 //increment data
