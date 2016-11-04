@@ -69,9 +69,6 @@ Class MQTT
     Shared queue As ListOfObject //FIFO
     Shared timeSincePublish As Integer //publishing timer
     Shared running As Boolean //crude mutex
-    Shared recheck As Boolean //allows rechecking of real-time event (checks every 5 seconds when set)
-    Shared item As Boolean //item to recheck
-    Shared publish_as As ListOfByte //what to publish as
     
     Shared Sub Publish(topic As String, text As String)
         MQTT.Publish_String(topic, text, QoS.AtMostOnce, False)    
@@ -118,14 +115,6 @@ Class MQTT
         MQTT.Publish_String(topic, text, quality, False)
     End Sub
     
-    Shared Sub Recheck_Event(_publish_as As String, _item As Boolean)
-        //set event to recheck, and what to publish as
-        item = _item
-        publish_as = New ListOfByte()
-        publish_as.Add(_publish_as)
-        recheck = True
-    End Sub
-    
     Shared Sub remove(index As Integer) //workaround until list remove is fixed
         If queue = Nothing Or queue.Count() = 0 Then
             Return
@@ -143,8 +132,7 @@ Class MQTT
     End Sub
     
     Shared Sub Insert(value As Object) //workaround until list InsertAt is fixed (add to top of list)
-        If queue = Nothing Or queue.Count() = 0 Then
-            queue = New ListOfObject()
+        If queue.Count() = 0 Then
             queue.Add(value)
             Return
         End If
@@ -164,7 +152,8 @@ Class MQTT
         Dim _Message As MQTT_Message = New MQTT_Message(topic, text, quality, exact)
         
         If Not use_queue Then
-            MQTT.Publish(_Message) //publish direct and return if queuing is not selected or Priority is set
+            MQTT.Publish(_Message) //publish direct and return if queuing is not selected
+            MQTT_priority = False
             Return
         End If
         
@@ -192,30 +181,18 @@ Class MQTT
     End Sub
     
     Shared Event Publish_Queue() RaiseEvent Every 3 Seconds //limit publishing to once per 3 seconds
-        If queue = Nothing Or (Device.Uptime() - timeSincePublish < 3) Then
+        If queue = Nothing Or (Device.Uptime() - timeSincePublish < 3) Or Not use_queue Then
             Return
         End If
+        running = True //crude mutex
         If queue.Count> 0 Then
-            running = True //crude mutex
             Dim msg As MQTT_Message = New MQTT_Message()
             Dim msg_queue As Object = queue(0).Clone() //make shallow copy of top FIFO message object
             msg = msg_queue.Cast(MQTT_Message) //cast as MQTT_Message
-            msg.Publish() //publish message
-            
-            'running = True //crude mutex
-            //queue.Remove(msg_queue)
-            //MQTT.remove(0) //remove from top of queue (workaround for bug - now fixed)
-            queue.RemoveAt(0) //remove from top of queue
-            running = False
+            MQTT.Publish(msg) //publish message
+            queue.RemoveAt(0) //remove from top of queue 
         End If
-    End Event
-    
-    Shared Event Recheck_Event() RaiseEvent Every 5 Seconds //Recheck Event every 5 seconds if set
-        If recheck And (Device.Uptime() - timeSincePublish > 5) Then //if it's been more than 5 seconds since publishing
-            //MQTT.Publish(publish_as, item)
-            MQTT.Publish(publish_as.ToString, item, QoS.ExactlyOnce)
-            recheck = False //just recheck once
-        End If
+        running = False
     End Event
     
     //**************************************************************************/

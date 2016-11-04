@@ -1,149 +1,179 @@
-﻿//MMA8652 Library Test - Door Knock and Status (open/close) Sensor
-//Requires TempSensor, MQTT and MMA8652 libraries
-//Publishes status every 1 minute (unless disabled) to mqtt topic "MCThings/" followed by device uid
-//publishes data in beacons
-//Uses accelerometer transient detection to sense knocking on the door
+﻿// MMA8652 Library Test - Door Knock and Status (open/close) Sensor
+// Requires TempSensor, MQTT and MMA8652 libraries
+// Publishes status every 1 minute (unless disabled) to mqtt topic "MCThings/" followed by device uid
+// Publishing of data (and LED indication) can be disabled (to save battery) by publishing "True" or "False" to "MCThings/" <device uid>  "/EnablePublish" - enabled by default
+// Publishes data in beacons also (always).
+// Uses accelerometer transient/click detection to sense knocking on the door
+// Knock sensor can be enabled/ disabled by publishing "True" or "False" to "MCThings/" <device uid>  "/EnableDoorKnock" - enabled by default
 
 // N Waterton 9th September 2016  V1.01: Beta Release - changed door status reporting frequency to fix bug in beacon data reporting...
 // N Waterton 10th September 2016 V1.02: Beta Release - removed uptime reporting bug
 // N Waterton 20th October 2016 V2.0: Beta Release - Changed library to use Stephens MMA8652 library & major re-write
+// N Waterton 3rd November 2016 V2.1: First Release - tried to reduce random reboots by fiddling with accelerometer timing.
 
 Class Main
     
-    Const Version As String = "V2.0"
+    Const Version As String = "V2.1"
     Shared data As dataType
-    Const Sub_Topic As String = "MCThings/Publish"
+    Shared Sub_Topic_Publish_Enable As String
     Shared Sub_Topic_Knock_Enable As String
     Shared Knock_Enable As Boolean
     Shared Publish_data As Boolean
-    Shared Count As Integer
     Shared accel As MMA8652
     Shared TimeSinceKnockTriggered As Integer
     Shared TimeSinceDoorClosed As Integer
+    Const KnockLockoutPeriod As Integer = 60 //no repeat knocks within 60 seconds if triggered
+    Const DoorLockoutPeriod As Integer = 5 //no detection until door has been closed for 5 seconds
+    Shared Door_Status As Boolean
     
     Shared Event Boot()
-        //Lplan.SetLowPowerMode(10) //communicate every 10 seconds regardless  
-        //Lplan.SetMidPowerMode(2000) //communicate every 2 seconds regardless
         Publish_data = True
+        Sub_Topic_Publish_Enable = "MCThings/" + Device.mcUID().ToString("X8") + "/EnablePublish"
         Sub_Topic_Knock_Enable = "MCThings/" + Device.mcUID().ToString("X8") + "/EnableDoorKnock"
-        TimeSinceKnockTriggered = -60
+        TimeSinceKnockTriggered = 0 - KnockLockoutPeriod //so door knock detection is enabled on boot
         TimeSinceDoorClosed = 0
-        MQTT.Subscribe(Sub_Topic)
-        MQTT.Subscribe(Sub_Topic_Knock_Enable, QoS.ExactlyOnce)
-        MQTT.use_queue = True //enable MQTT queueing
+        MQTT.Subscribe(Sub_Topic_Publish_Enable)
+        MQTT.Subscribe(Sub_Topic_Knock_Enable) //note, cannot debug in run mode on mc-dev with subscriptions enabled.
         MQTT.Publish("Status", "Booted: " + Version)
         accel = New MMA8652()
         If accel.online Then
             MQTT.Publish("Status", "Accel Sensor Online")
             accel.Setup(MMA8652_ACTIVE_ODR._400HZ, MMA8652_MODS.LOW_POWER, MMA8652_SLEEP_ODR._12_5HZ, MMA8652_SMODS.MOD_LOW_POWER)
-            //accel.Setup(MMA8652_ACTIVE_ODR._50HZ, MMA8652_MODS.NORMAL)
+            //may need to play with these settings to match your door characteristics (g, duration etc)
             'accel.ConfigureShockInterrupt(0.1, 10) //default 0.1, 20 (magnitude in g, duraton in ms)
             //pulse (click) detection works better for knock detection...
             accel.ConfigurePulseInterrupt(0.15, 50, 50, 2000) //default 0.1, 20 (magnitude in g, duraton in ms, minnimum time between pulses, window for second pulse detection)
             accel.EnableSleepMode(2000) //enable sleep mode, 2s wake time
             Knock_Enable = True
-            
         Else
             MQTT.Publish("Status", "Accel Sensor Offline")
             Knock_Enable = False
         End If
-        Dim Door_Status As Boolean = ReedSwitch
-        MQTT.Publish("Door", Door_Status)
-        //MQTT.BeaconPublish(dataType.DOOR, Door_Status)  //DO NOT put beacon data in boot! really doesn't like it
+        Door_Status = ReedSwitch
+        MQTT.Publish("Door", Door_Status) //publish door status on boot
+        MQTT.use_queue = True //enable MQTT queueing - try to work around "stop publishing bug"
     End Event
     
     Shared Event NewGateway()
-        MQTT.Subscribe(Sub_Topic)
-        MQTT.Subscribe(Sub_Topic_Knock_Enable, QoS.ExactlyOnce)
+        MQTT.Subscribe(Sub_Topic_Publish_Enable)
+        MQTT.Subscribe(Sub_Topic_Knock_Enable)
     End Event
     
-    Shared Event AccelerometerInt1()
-        If Knock_Enable Then
-            Dim intType As ListOfString = accel.GetIntSource() 
-            While intType.Count> 0 And Not ReedSwitch //door is closed
-                For Each interrupt In intType
-                    //MQTT.Publish("Interrupt", interrupt)  //debug
-                    Select interrupt
-                        Case "shock"
-                            'Transient interrupt occured
-                            LedGreen = True
-                            DetectDoorKnock()
-                            LedGreen = False
-                            accel.Shock() // Must read shock data to clear interrupt
-                        Case "pulse"
-                            'click interrupt occured
-                            LedGreen = True
-                            Count += 1
-                            If (accel.Pulse() = "double") Then // Must read pulse data to clear interrupt
-                                DetectDoorKnock_DoubleClick() //if it's a double click (pulse)
-                            Else
-                                DetectDoorKnock() //single click (pulse)
-                            End If
-                            LedGreen = False
-                        Case "autosleep"
-                            LedRed = True
-                            accel.Autosleep() // Must read Autosleep to clear interrupt
-                            'MQTT.Publish("Count", Count) //debugging
-                            Count = 0
-                            //MQTT.Publish("Mode", accel.Autosleep) // Must read Autosleep to clear interrupt
-                            LedRed = False
-                        Case Else
-                            LedRed = True
-                            MQTT.Publish("Unhandled Interrupt", interrupt)
-                            //clear unhandled interupt here
-                            LedRed = False
-                    End Select 
-                Next
-                
-                intType = accel.GetIntSource()
-                
-            End While
-        End If
-    End Event
+    Public Function getUptimeString() As String
+        //Kludge until DateTime Functions work
+        Dim secs As Integer = Device.Uptime()
+        
+        Dim day As Integer = (secs / 86400).ToInteger
+        secs -= 86400 * day
+        Dim hrs As Integer = (secs / 3600).ToInteger
+        secs -= 3600 * hrs
+        Dim mins As Integer = (secs / 60).ToInteger
+        secs -= 60 * mins
+        
+        Dim uptime_string As String = day.ToString+ ":" + hrs.ToString+ ":" + mins.ToString+ ":" + secs.ToString
+        Return uptime_string
+    End Function
     
-    Public Sub DetectDoorKnock()
-        //if more than 60 seconds since Knock last triggered, and more than 5 seconds since door closed
-        If (Device.Uptime() - TimeSinceKnockTriggered > 60) And (Device.Uptime() - TimeSinceDoorClosed > 5) Then
-            Dim timeSinceLastTransient As Integer = Device.GetTimeSpan()
-            'If at least two transients within 1.5 seconds (note sleep time is 2 seconds)
-            If timeSinceLastTransient < 1500000 And timeSinceLastTransient > 0 Then //debounce door
-                Trigger_DoorKnock(1000)
+    Public Sub setLedGreen(on As Boolean)
+        If Not on Then
+            LedGreen = False //turn LED off
+        Else
+            If Not Publish_data Then //dont turn on LED if not publishing (battery saving)
+                Return
+            Else
+                LedGreen = True //turn LED on
             End If
         End If
     End Sub
     
-    Public Sub DetectDoorKnock_DoubleClick()
-        //if more than 60 seconds since Knock last triggered, and more than 5 seconds since door closed
-        If (Device.Uptime() - TimeSinceKnockTriggered > 60) And (Device.Uptime() - TimeSinceDoorClosed > 5) Then
-            MQTT.Publish_Priority("Doorknock", "Double", QoS.AtLeastOnce)
+    Public Function isKnockEnabled() As Boolean
+        //should we be looking for door knocks?
+        Return (Not ReedSwitch And Knock_Enable And (Device.Uptime() - TimeSinceKnockTriggered > KnockLockoutPeriod) And (Device.Uptime() - TimeSinceDoorClosed > DoorLockoutPeriod))
+    End Function
+    
+    Shared Event AccelerometerInt1()
+        If Not Knock_Enable Then //disable accelerator by not processing interrupts, if not enabled.
+            Return
+        End If
+        While Not isKnockEnabled() //dont process interrupts while door is open or knock not enabled for some other reason
+            Thread.Sleep(5000000) // 5 s delay
+            Thread.ClearHardwareEvent()
+        End While
+        Dim intType As ListOfString = accel.GetIntSource() //get interrupt source
+        While intType.Count> 0 //while we have uncleared interrupts
+            For Each interrupt In intType
+                //MQTT.Publish("Interrupt", interrupt)  //debug - careful, this can try to publish a lot!
+                Select interrupt
+                    Case "shock"
+                        'Transient interrupt occured
+                        setLedGreen(True)
+                        DetectDoorKnock()
+                        setLedGreen(False)
+                        accel.Shock() // Must read shock data to clear interrupt (returns ListOfString giving axis and +/-) but can ignore this
+                    Case "pulse"
+                        'click interrupt occured
+                        setLedGreen(True)
+                        If (accel.Pulse() = "double") Then // Must read pulse data to clear interrupt
+                            Trigger_DoorKnock(1000) //if it's a double click (pulse)
+                        Else
+                            DetectDoorKnock() //single click (pulse)
+                        End If
+                        setLedGreen(False)
+                    Case "autosleep"
+                        LedRed = True
+                        accel.Autosleep() // Must read Autosleep to clear interrupt
+                        LedRed = False
+                    Case Else
+                        LedRed = True
+                        MQTT.Publish("Unhandled Interrupt", interrupt)
+                        //clear unhandled interupt here
+                        LedRed = False
+                End Select 
+            Next
+            
+            intType = accel.GetIntSource() //any more interupts?
+            
+        End While
+        Thread.Sleep(300000) //Do not allow events to trigger too fast (300ms delay)
+    End Event
+    
+    Public Sub DetectDoorKnock()
+        Dim timeSinceLastTransient As Integer = Device.GetTimeSpan()
+        'If at least two transients within 1.5 seconds (note sleep time is 2 seconds)
+        If timeSinceLastTransient < 1500000 And timeSinceLastTransient > 0 Then //debounce door by setting timeSinceLastTransient > 0
             Trigger_DoorKnock(1000)
         End If
     End Sub
     
     Public Sub Trigger_DoorKnock(duration As Integer)
         Thread.Sleep(duration * 1000) //sleep duration in ms (1 s seems about right)
-        If ReedSwitch = False Then //If door is still closed (prevent door opening transients from triggering)
+        If isKnockEnabled() Then //If door is still closed etc (prevent door opening transients from triggering)
             TimeSinceKnockTriggered = Device.Uptime()
-            MQTT.Publish_Priority("Doorknock", True, QoS.AtLeastOnce)
+            MQTT.Publish_Priority("Doorknock", True, QoS.ExactlyOnce)
         End If
     End Sub
     
     Shared Event ReedSwitchChanged()
-        Thread.Sleep(100000) //debounce
+        Thread.Sleep(20000) //debounce
         Thread.ClearHardwareEvent()
         LedGreen = True
         TimeSinceDoorClosed = Device.Uptime()
         TimeSinceKnockTriggered = 0
-        Dim Door_Status As Boolean = ReedSwitch
-        MQTT.Publish("Door", Door_Status, QoS.AtLeastOnce)
-        MQTT.BeaconPublish(dataType.DOOR, Door_Status)
-        If Not Door_Status And Knock_Enable Then //false is closed, true = open
-            accel.Autosleep() // Must read Autosleep to clear interrupt
-            accel.Shock() // Must read shock data to clear interrupt
-            accel.Pulse() // Must read pulse data to clear interrupt
+        If Door_Status <> ReedSwitch Then
+            Door_Status = ReedSwitch
+            MQTT.Publish("Door", Door_Status)
+            MQTT.BeaconPublish(dataType.DOOR, Door_Status)
         End If
         LedGreen = False
-        MQTT.Recheck_Event("Door", ReedSwitch) //recheck door status in 5 (as door open/close events in less than 1/10 sec will be lost)
+        Do
+            Thread.Sleep(1000000)
+            Thread.ClearHardwareEvent()
+        While (Device.Uptime() - MQTT.timeSincePublish < 2) //ignore other events for 2 seconds then publish status
+        If Door_Status <> ReedSwitch Then
+            Door_Status = ReedSwitch
+            MQTT.Publish("Door", Door_Status)
+            MQTT.BeaconPublish(dataType.DOOR, Door_Status)
+        End If
     End Event
     
     Shared Event SubscriptionDelivery()
@@ -153,7 +183,7 @@ Class Main
         Dim tmp_str As String = msg.PayLoad.ToString()
         Dim topic As String = msg.Topic.ToString()
         'MQTT.Publish("Status", "Received Message: " + topic + " : " + tmp_str)
-        If topic = Sub_Topic Then
+        If topic = Sub_Topic_Publish_Enable Then
             If Boolean.TryConvert(tmp_str, tmp) Then
                 Publish_data = tmp
                 MQTT.Publish("Publish", Publish_data)
@@ -165,13 +195,10 @@ Class Main
                 Knock_Enable = tmp
                 If accel.online Then
                     MQTT.Publish("KnockEnable", Knock_Enable)
-                    If Knock_Enable Then
-                        'accel.Activate()
-                        accel.Autosleep() // Must read Autosleep to clear interrupt
-                        accel.Shock() // Must read shock data to clear interrupt
-                        accel.Pulse() // Must read pulse data to clear interrupt
-                    Else
-                        'accel.Standby()
+                    If Knock_Enable Then //clear accelerator interrupts to enable it
+                        accel.Shock()
+                        accel.Pulse()
+                        accel.Autosleep()
                     End If
                 Else
                     MQTT.Publish("Status", "Accel Sensor Offline")
@@ -185,20 +212,24 @@ Class Main
         End If
     End Event
     
-    Shared Event KnockStatus() RaiseEvent Every 5 Minutes //publish status of Knock Detection
+    Shared Event Status() RaiseEvent Every 5 Minutes //publish status of Knock Detection on/off, and publish on/off
         MQTT.Publish("KnockEnable", Knock_Enable)
+        MQTT.Publish("PublishEnable", Publish_data)
     End Event
     
     Shared Event Publish() RaiseEvent Every 1 Minutes
         LedGreen = True
-        If Device.Uptime() < 70 Then //check for rollover
-            TimeSinceKnockTriggered = 0
+        If Door_Status <> ReedSwitch Then
+            Door_Status = ReedSwitch
+            MQTT.Publish("Door", Door_Status) //True = OPEN False = CLOSED
+            MQTT.BeaconPublish(dataType.DOOR, Door_Status)
         End If
         Select data
             Case dataType.UPTIME
                 Dim Uptime As Integer = Device.Uptime()
                 If Publish_data Then
                     MQTT.Publish("Uptime", Uptime)
+                    MQTT.Publish("UptimeString", getUptimeString())
                 End If
                 If Uptime < Short.MaxValue Then
                     MQTT.BeaconPublish(dataType.UPTIME, Uptime)
@@ -219,7 +250,7 @@ Class Main
                 MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
                 data = dataType.DOOR
             Case dataType.DOOR
-                Dim Door_Status As Boolean = ReedSwitch
+                Door_Status = ReedSwitch
                 If Publish_data Then
                     MQTT.Publish("Door", Door_Status) //True = OPEN False = CLOSED
                 End If

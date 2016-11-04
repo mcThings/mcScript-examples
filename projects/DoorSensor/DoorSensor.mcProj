@@ -32,13 +32,6 @@
       <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
-    <DocumentSetting>
-      <Name>[Listing]</Name>
-      <FileSpec>DoorSensor.lst</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
-      <BreakPointLineNumbers />
-    </DocumentSetting>
   </DocumentSettings>
   <ManualCompile>false</ManualCompile>
 </ProjectSetting>
