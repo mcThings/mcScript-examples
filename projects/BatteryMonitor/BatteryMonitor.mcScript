@@ -15,14 +15,30 @@ Class BatteryMonitor
     Const version As String = "V1.0"
     
     Shared Event Boot()
-        LedGreen = True //turn green led on to draw power and indicate booted
+        //LedGreen = True //turn green led on to draw power and indicate booted (removed as probably not needed)
         MQTT.Publish("Status", "Booted: " + version)
+        MQTT.use_queue = True //workaround for "stop publishing" bug - not really needed, as we don't publish fast.
         data = dataType.BATTVOLTAGE
     End Event
     
     Public Function LowBatt() As Boolean
         Dim BatteryMon As Boolean = Not LowBattery
         Return BatteryMon
+    End Function
+    
+    Public Function getUptimeString() As String
+        //Kludge until DateTime Functions work
+        Dim secs As Integer = Device.Uptime()
+        
+        Dim day As Integer = (secs / 86400).ToInteger
+        secs -= 86400 * day
+        Dim hrs As Integer = (secs / 3600).ToInteger
+        secs -= 3600 * hrs
+        Dim mins As Integer = (secs / 60).ToInteger
+        secs -= 60 * mins
+        
+        Dim uptime_string As String = day.ToString+ ":" + hrs.ToString+ ":" + mins.ToString+ ":" + secs.ToString
+        Return uptime_string
     End Function
     
     Shared Event Warning() RaiseEvent Every 15 Seconds
@@ -72,6 +88,7 @@ Class BatteryMonitor
             Case dataType.UPTIME
                 Dim Uptime As Integer = Device.Uptime()
                 MQTT.Publish("Uptime", Uptime)
+                MQTT.Publish("UptimeString", getUptimeString())
                 If Uptime < Short.MaxValue Then
                     MQTT.BeaconPublish(dataType.UPTIME, Uptime)
                 End If
