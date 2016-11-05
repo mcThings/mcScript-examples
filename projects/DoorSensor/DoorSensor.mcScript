@@ -51,7 +51,7 @@ Class Main
         End If
         Door_Status = ReedSwitch
         MQTT.Publish("Door", Door_Status) //publish door status on boot
-        MQTT.use_queue = True //enable MQTT queueing - try to work around "stop publishing bug"
+        //MQTT.use_queue = True //enable MQTT queueing - try to work around "stop publishing bug"
     End Event
     
     Shared Event NewGateway()

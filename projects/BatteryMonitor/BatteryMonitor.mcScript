@@ -15,9 +15,9 @@ Class BatteryMonitor
     Const version As String = "V1.0"
     
     Shared Event Boot()
-        //LedGreen = True //turn green led on to draw power and indicate booted (removed as probably not needed)
+        LedGreen = True //turn green led on to draw power and indicate booted
         MQTT.Publish("Status", "Booted: " + version)
-        MQTT.use_queue = True //workaround for "stop publishing" bug - not really needed, as we don't publish fast.
+        //MQTT.use_queue = True //workaround for "stop publishing" bug - not really needed, as we don't publish fast.
         data = dataType.BATTVOLTAGE
     End Event
     
