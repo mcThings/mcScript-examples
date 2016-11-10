@@ -7,17 +7,20 @@
 // Must include TempSensor and MQTT Library
 //
 
+// N Waterton 7th November 2016  V1.01: Beta Release - changed warning reporting to try to improve reliability
+
 Define PinMode Pin0 As DigitalInputPullupWeak Alias LowBattery
 
 Class BatteryMonitor
     
     Shared data As dataType
-    Const version As String = "V1.0"
+    Const version As String = "V1.1"
     
     Shared Event Boot()
         LedGreen = True //turn green led on to draw power and indicate booted
         MQTT.Publish("Status", "Booted: " + version)
-        //MQTT.use_queue = True //workaround for "stop publishing" bug - not really needed, as we don't publish fast.
+        //MQTT.use_queue = True //workaround for "stop publishing" bug
+        //MQTT.use_delay = True //workaround for "stop publishing" bug
         data = dataType.BATTVOLTAGE
     End Event
     
@@ -25,6 +28,44 @@ Class BatteryMonitor
         Dim BatteryMon As Boolean = Not LowBattery
         Return BatteryMon
     End Function
+    
+    Public Sub LedRedFlash()
+        LedRed = True
+        Thread.Sleep(3000)
+        LedRed = False
+    End Sub
+    
+    Public Sub Warning_Check()
+        Dim BattVoltCheck As Integer = Device.BatteryVoltage()
+        If BattVoltCheck <= 3300 Then
+            MQTT.Publish_Priority("BatteryVoltage", BattVoltCheck)
+            MQTT.BeaconPublish(dataType.BATTVOLTAGE, BattVoltCheck)
+            If data = dataType.BATTVOLTAGE Then
+                data = dataType.TEMPERATURE
+            End If
+            LedRedFlash()
+        End If
+        
+        Dim TempC As Float = TempSensor.GetTemp
+        If TempC >= 30 Or TempC <= 10 Then
+            MQTT.Publish_Priority("Temperature", TempC)
+            MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
+            If data = dataType.TEMPERATURE Then
+                data = dataType.LOWBATT
+            End If
+            LedRedFlash()
+        End If
+        
+        Dim LowBattery As Boolean = LowBatt()
+        If LowBattery Then
+            MQTT.Publish_Priority("LowBattery", LowBattery)
+            MQTT.BeaconPublish(dataType.LOWBATT, LowBattery)
+            If data = dataType.LOWBATT Then
+                data = dataType.UPTIME
+            End If
+            LedRedFlash()
+        End If
+    End Sub
     
     Public Function getUptimeString() As String
         //Kludge until DateTime Functions work
@@ -41,34 +82,8 @@ Class BatteryMonitor
         Return uptime_string
     End Function
     
-    Shared Event Warning() RaiseEvent Every 15 Seconds
-        Dim BattVoltCheck As Integer = Device.BatteryVoltage()
-        If BattVoltCheck <= 3500 Then
-            LedRed = True
-            MQTT.Publish_Priority("BatteryVoltage", BattVoltCheck)
-            MQTT.BeaconPublish(dataType.BATTVOLTAGE, BattVoltCheck)
-            LedRed = False
-        End If
-        
-        Dim LowBattery As Boolean = LowBatt()
-        If LowBattery Then
-            LedRed = True
-            MQTT.Publish_Priority("LowBattery", LowBattery)
-            MQTT.BeaconPublish(dataType.LOWBATT, LowBattery)
-            LedRed = False
-        End If
-        
-        Dim TempC As Float = TempSensor.GetTemp
-        If TempC >= 30 Or TempC <= 10 Then
-            LedRed = True
-            MQTT.Publish_Priority("Temperature", TempC)
-            MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
-            LedRed = False
-        End If
-    End Event
-    
     Shared Event Publish() RaiseEvent Every 30 Seconds
-        LedRed = True
+        'Warning_Check()
         Select data
             Case dataType.BATTVOLTAGE
                 Dim BattVolt As Integer = Device.BatteryVoltage()
@@ -97,6 +112,7 @@ Class BatteryMonitor
                 MQTT.Publish("Status", "OnLine")
                 data = dataType.BATTVOLTAGE
         End Select
-        LedRed = False
+        Lplan.SendBeacon()
+        LedRedFlash()
     End Event  
 End Class

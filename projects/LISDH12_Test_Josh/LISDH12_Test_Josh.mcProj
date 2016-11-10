@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ProjectName>LISDH12_Test_Josh</ProjectName>
+  <DeviceType>mcMod120</DeviceType>
+  <LastDocumentName>..\LISDH12%20Beta\LIS2DH12.mcScript</LastDocumentName>
+  <DocumentSettings>
+    <DocumentSetting>
+      <Name>LISDH12_Test_Josh</Name>
+      <FileSpec>LISDH12_Test_Josh.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>LIS2DH12</Name>
+      <FileSpec>..\LISDH12%20Beta\LIS2DH12.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+  </DocumentSettings>
+  <ManualCompile>false</ManualCompile>
+</ProjectSetting>

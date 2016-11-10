@@ -10,10 +10,11 @@
 // N Waterton 10th September 2016 V1.02: Beta Release - removed uptime reporting bug
 // N Waterton 20th October 2016 V2.0: Beta Release - Changed library to use Stephens MMA8652 library & major re-write
 // N Waterton 3rd November 2016 V2.1: First Release - tried to reduce random reboots by fiddling with accelerometer timing.
+// N Waterton 6th November 2016 V2.2: First Release - tried to reduce random reboots by fiddling with accelerometer timing (again).
 
 Class Main
     
-    Const Version As String = "V2.1"
+    Const Version As String = "V2.2"
     Shared data As dataType
     Shared Sub_Topic_Publish_Enable As String
     Shared Sub_Topic_Knock_Enable As String
@@ -52,6 +53,7 @@ Class Main
         Door_Status = ReedSwitch
         MQTT.Publish("Door", Door_Status) //publish door status on boot
         //MQTT.use_queue = True //enable MQTT queueing - try to work around "stop publishing bug"
+        MQTT.use_delay = True //enable MQTT delay - try to work around "stop publishing bug"
     End Event
     
     Shared Event NewGateway()
@@ -86,16 +88,28 @@ Class Main
         End If
     End Sub
     
+    Public Sub LedGreenFlash()
+        LedGreen = True
+        Thread.Sleep(3000)
+        LedGreen = False
+    End Sub
+    
+    Public Sub LedRedFlash()
+        LedRed = True
+        Thread.Sleep(3000)
+        LedRed = False
+    End Sub
+    
     Public Function isKnockEnabled() As Boolean
         //should we be looking for door knocks?
-        Return (Not ReedSwitch And Knock_Enable And (Device.Uptime() - TimeSinceKnockTriggered > KnockLockoutPeriod) And (Device.Uptime() - TimeSinceDoorClosed > DoorLockoutPeriod))
+        Return (Not Door_Status And Knock_Enable And (Device.Uptime() - TimeSinceKnockTriggered > KnockLockoutPeriod) And (Device.Uptime() - TimeSinceDoorClosed > DoorLockoutPeriod))
     End Function
     
     Shared Event AccelerometerInt1()
-        If Not Knock_Enable Then //disable accelerator by not processing interrupts, if not enabled.
-            Return
-        End If
         While Not isKnockEnabled() //dont process interrupts while door is open or knock not enabled for some other reason
+            If Not Knock_Enable Then //disable accelerator by not processing interrupts, if not enabled.
+                Return
+            End If
             Thread.Sleep(5000000) // 5 s delay
             Thread.ClearHardwareEvent()
         End While
@@ -115,6 +129,8 @@ Class Main
                         setLedGreen(True)
                         If (accel.Pulse() = "double") Then // Must read pulse data to clear interrupt
                             Trigger_DoorKnock(1000) //if it's a double click (pulse)
+                            setLedGreen(False)
+                            MQTT.Publish("Tap", "double") //debug
                         Else
                             DetectDoorKnock() //single click (pulse)
                         End If
@@ -124,14 +140,14 @@ Class Main
                         accel.Autosleep() // Must read Autosleep to clear interrupt
                         LedRed = False
                     Case Else
-                        LedRed = True
+                        LedRedFlash()
                         MQTT.Publish("Unhandled Interrupt", interrupt)
                         //clear unhandled interupt here
-                        LedRed = False
                 End Select 
             Next
             
             intType = accel.GetIntSource() //any more interupts?
+            Thread.ClearHardwareEvent()
             
         End While
         Thread.Sleep(300000) //Do not allow events to trigger too fast (300ms delay)
@@ -145,35 +161,31 @@ Class Main
         End If
     End Sub
     
-    Public Sub Trigger_DoorKnock(duration As Integer)
-        Thread.Sleep(duration * 1000) //sleep duration in ms (1 s seems about right)
-        If isKnockEnabled() Then //If door is still closed etc (prevent door opening transients from triggering)
-            TimeSinceKnockTriggered = Device.Uptime()
-            MQTT.Publish_Priority("Doorknock", True, QoS.ExactlyOnce)
+    Public Sub Trigger_DoorKnock(duration As Integer) //pause duration in seconds
+        If isKnockEnabled() Then
+            Thread.Sleep(duration * 1000) //delay in ms - about 1 s seems right
+            If isKnockEnabled() Then //If door is still closed etc (prevent door opening transients from triggering)
+                TimeSinceKnockTriggered = Device.Uptime()
+                MQTT.Publish_Priority("Doorknock", True, QoS.ExactlyOnce)
+            End If
+        End If
+    End Sub
+    
+    Public Sub PublishDoorStatus()
+        Thread.ClearHardwareEvent()
+        If Door_Status <> ReedSwitch Then
+            Door_Status = ReedSwitch
+            MQTT.Publish("Door", Door_Status, QoS.AtLeastOnce)
+            MQTT.BeaconPublish(dataType.DOOR, Door_Status)
+            LedGreenFlash()
         End If
     End Sub
     
     Shared Event ReedSwitchChanged()
-        Thread.Sleep(20000) //debounce
-        Thread.ClearHardwareEvent()
-        LedGreen = True
         TimeSinceDoorClosed = Device.Uptime()
         TimeSinceKnockTriggered = 0
-        If Door_Status <> ReedSwitch Then
-            Door_Status = ReedSwitch
-            MQTT.Publish("Door", Door_Status)
-            MQTT.BeaconPublish(dataType.DOOR, Door_Status)
-        End If
-        LedGreen = False
-        Do
-            Thread.Sleep(1000000)
-            Thread.ClearHardwareEvent()
-        While (Device.Uptime() - MQTT.timeSincePublish < 2) //ignore other events for 2 seconds then publish status
-        If Door_Status <> ReedSwitch Then
-            Door_Status = ReedSwitch
-            MQTT.Publish("Door", Door_Status)
-            MQTT.BeaconPublish(dataType.DOOR, Door_Status)
-        End If
+        PublishDoorStatus()
+        PublishDoorStatus() //call twice to deal with rapid door cycling...
     End Event
     
     Shared Event SubscriptionDelivery()
@@ -218,12 +230,7 @@ Class Main
     End Event
     
     Shared Event Publish() RaiseEvent Every 1 Minutes
-        LedGreen = True
-        If Door_Status <> ReedSwitch Then
-            Door_Status = ReedSwitch
-            MQTT.Publish("Door", Door_Status) //True = OPEN False = CLOSED
-            MQTT.BeaconPublish(dataType.DOOR, Door_Status)
-        End If
+        PublishDoorStatus() //just in case
         Select data
             Case dataType.UPTIME
                 Dim Uptime As Integer = Device.Uptime()
@@ -260,6 +267,6 @@ Class Main
                 MQTT.Publish("Status", "OnLine")
                 data = dataType.UPTIME
         End Select
-        LedGreen = False
+        LedGreenFlash()
     End Event     
 End Class 
