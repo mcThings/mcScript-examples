@@ -8,13 +8,15 @@
 //
 
 // N Waterton 7th November 2016  V1.01: Beta Release - changed warning reporting to try to improve reliability
+// N Waterton 2th January 2017 V1.5: First Release - added json payloads for MQTT, various improvements with new firmware
 
 Define PinMode Pin0 As DigitalInputPullupWeak Alias LowBattery
 
 Class BatteryMonitor
     
     Shared data As dataType
-    Const version As String = "V1.1"
+    Const version As String = "V1.5"
+    Shared MillisecondsOffset As Integer //Offset used by GetTimeStamp()
     
     Shared Event Boot()
         LedGreen = True //turn green led on to draw power and indicate booted
@@ -23,6 +25,68 @@ Class BatteryMonitor
         //MQTT.use_delay = True //workaround for "stop publishing" bug
         data = dataType.BATTVOLTAGE
     End Event
+    
+    Public Function GetTimestamp() As String
+        'default format (milliseconds format, epoch is unix style)
+        Return GetTimestamp(3, -1)
+    End Function
+    
+    Public Function GetTimestamp(format As Byte, TimestampOffset As Integer) As String
+        'get unix type timestamp with different formats:
+        '1: return just seconds
+        '2: return seconds as milliseconds (ie ends in 000)
+        '3: return milliseconds (fudge with GetTimeSpan())
+        '4: return seconds.milliseconds (fudge with GetTimeSpan())
+        'add offset 946670400 (seconds) to get epoch as unix format ie since 1st Jan 1970
+        'otherwise epoc is 1st Jan 2000
+        'return as string as we do not have a long data type
+        'Shared MillisecondsOffset As Integer defined in Class
+        If (TimestampOffset = -1) Then
+            TimestampOffset = 946670400
+        End If
+        
+        Dim Timestamp_seconds_string As String = (DateTime.Now().ToInteger() + TimestampOffset).ToString()
+        Dim Timestamp_microseconds As Integer = Device.GetTimeSpan()
+        Dim Timestamp_milliseconds As Integer = ((Timestamp_microseconds % 1000000) / 1000).ToInteger()
+        
+        If Timestamp_microseconds < 0 Then 'account for overflow
+            Timestamp_milliseconds = 0
+            MillisecondsOffset = 0
+        End If
+        
+        Timestamp_milliseconds = (Timestamp_milliseconds + MillisecondsOffset) % 1000
+        MillisecondsOffset = Timestamp_milliseconds
+        
+        Dim Timestamp_milliseconds_string As String = Timestamp_milliseconds.ToString("D3")
+        
+        'If I could figure out what the string formatters are, wouldn't need this
+        '"D3", and "000" don't work.
+        If (Timestamp_milliseconds_string.Length() < 3) Then
+            If (Timestamp_milliseconds_string.Length() = 1) Then
+                Timestamp_milliseconds_string = "00" + Timestamp_milliseconds_string
+            ElseIf (Timestamp_milliseconds_string.Length() = 2) Then
+                Timestamp_milliseconds_string = "0" + Timestamp_milliseconds_string
+            Else 
+                Timestamp_milliseconds_string = "000"
+            End If
+        End If
+        
+        Dim formatted_string As String
+        
+        Select format
+            Case 1
+                formatted_string = Timestamp_seconds_string
+            Case 2
+                formatted_string = Timestamp_seconds_string + "000"
+            Case 3
+                formatted_string = Timestamp_seconds_string + Timestamp_milliseconds_string
+            Case 4
+                formatted_string = Timestamp_seconds_string + "." + Timestamp_milliseconds_string
+            Case Else
+                formatted_string = Timestamp_seconds_string + Timestamp_milliseconds_string
+        End Select
+        Return formatted_string
+    End Function
     
     Public Function LowBatt() As Boolean
         Dim BatteryMon As Boolean = Not LowBattery
@@ -36,9 +100,14 @@ Class BatteryMonitor
     End Sub
     
     Public Sub Warning_Check()
+        'not used in this release
         Dim BattVoltCheck As Integer = Device.BatteryVoltage()
         If BattVoltCheck <= 3300 Then
-            MQTT.Publish_Priority("BatteryVoltage", BattVoltCheck)
+            Dim jData As Json = New Json
+            jData.Add("time", GetTimestamp())
+            jData.Add("BatteryVoltage", BattVoltCheck)
+            MQTT.Publish_Priority("Data", jData)
+            //MQTT.Publish_Priority("BatteryVoltage", BattVoltCheck)
             MQTT.BeaconPublish(dataType.BATTVOLTAGE, BattVoltCheck)
             If data = dataType.BATTVOLTAGE Then
                 data = dataType.TEMPERATURE
@@ -48,7 +117,11 @@ Class BatteryMonitor
         
         Dim TempC As Float = TempSensor.GetTemp
         If TempC >= 30 Or TempC <= 10 Then
-            MQTT.Publish_Priority("Temperature", TempC)
+            Dim jData As Json = New Json
+            jData.Add("time", GetTimestamp())
+            jData.Add("Temperature", TempC)
+            MQTT.Publish_Priority("Data", jData)
+            //MQTT.Publish_Priority("Temperature", TempC)
             MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
             If data = dataType.TEMPERATURE Then
                 data = dataType.LOWBATT
@@ -58,7 +131,11 @@ Class BatteryMonitor
         
         Dim LowBattery As Boolean = LowBatt()
         If LowBattery Then
-            MQTT.Publish_Priority("LowBattery", LowBattery)
+            Dim jData As Json = New Json
+            jData.Add("time", GetTimestamp())
+            jData.Add("LowBattery", LowBattery)
+            MQTT.Publish_Priority("Data", jData)
+            //MQTT.Publish_Priority("LowBattery", LowBattery)
             MQTT.BeaconPublish(dataType.LOWBATT, LowBattery)
             If data = dataType.LOWBATT Then
                 data = dataType.UPTIME
@@ -84,26 +161,34 @@ Class BatteryMonitor
     
     Shared Event Publish() RaiseEvent Every 30 Seconds
         'Warning_Check()
+        Dim BattVolt As Integer = Device.BatteryVoltage()
+        Dim TempC As Float = TempSensor.GetTemp
+        Dim LowBattery As Boolean = LowBatt()
+        Dim Uptime As Integer = Device.Uptime()
+        Dim jData As Json = New Json
+        jData.Add("time", GetTimestamp())
+        jData.Add("Uptime", Uptime)
+        jData.Add("UptimeString", getUptimeString())
+        jData.Add("BatteryVoltage", BattVolt)
+        jData.Add("Temperature", TempC)
+        jData.Add("LowBattery", LowBattery)
+        MQTT.Publish("Data", jData)
         Select data
             Case dataType.BATTVOLTAGE
-                Dim BattVolt As Integer = Device.BatteryVoltage()
-                MQTT.Publish("BatteryVoltage", BattVolt)
+                //MQTT.Publish("BatteryVoltage", BattVolt)
                 MQTT.BeaconPublish(dataType.BATTVOLTAGE, BattVolt)
                 data = dataType.TEMPERATURE
             Case dataType.TEMPERATURE
-                Dim TempC As Float = TempSensor.GetTemp
-                MQTT.Publish("Temperature", TempC)
+                //MQTT.Publish("Temperature", TempC)
                 MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
                 data = dataType.LOWBATT
             Case dataType.LOWBATT
-                Dim LowBattery As Boolean = LowBatt()
-                MQTT.Publish("LowBattery", LowBattery)
+                //MQTT.Publish("LowBattery", LowBattery)
                 MQTT.BeaconPublish(dataType.LOWBATT, LowBattery)
                 data = dataType.UPTIME
             Case dataType.UPTIME
-                Dim Uptime As Integer = Device.Uptime()
-                MQTT.Publish("Uptime", Uptime)
-                MQTT.Publish("UptimeString", getUptimeString())
+                //MQTT.Publish("Uptime", Uptime)
+                //MQTT.Publish("UptimeString", getUptimeString())
                 If Uptime < Short.MaxValue Then
                     MQTT.BeaconPublish(dataType.UPTIME, Uptime)
                 End If
@@ -112,7 +197,7 @@ Class BatteryMonitor
                 MQTT.Publish("Status", "OnLine")
                 data = dataType.BATTVOLTAGE
         End Select
-        Lplan.SendBeacon()
+        //Lplan.SendBeacon()    'does not work well with json publishing
         LedRedFlash()
     End Event  
 End Class

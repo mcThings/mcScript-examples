@@ -1,0 +1,86 @@
+﻿// This Class supports Publishing, Subscribing and Beaconing via MQTT and UDP.
+
+Enum dataType As Byte
+    NONE = 0
+    VERSION = 1 //default beacon data for MQTT
+    UPTIME = 2
+    BATTVOLTAGE = 3
+    TEMPERATURE = 4
+    TEMPERATURE2 = 5
+    HUMIDITY = 6
+    DEWPOINT = 7
+    PRESSURE = 8
+    ALTITUDE = 9
+    MOTION = 10
+    DOOR = 11
+    KNOCK = 12
+End Enum
+
+Class MQTT
+    Shared mcUIDString As String
+    
+    Shared Sub Publish(topic As String, value As String)
+        If mcUIDString = Nothing Then
+            mcUIDString = Device.mcUID().ToString("X8")
+        End If
+        Dim text_string As ListOfByte = New ListOfByte()
+        text_string.Add(value)
+        Lplan.Publish("MCThings/" + mcUIDString + "/" + topic, text_string)
+    End Sub
+    
+    Shared Sub Publish(topic As String, value As Object)
+        Dim text As String = value.ToString()
+        If mcUIDString = Nothing Then
+            mcUIDString = Device.mcUID().ToString("X8")
+        End If
+        Dim text_string As ListOfByte = New ListOfByte()
+        text_string.Add(text)
+        Lplan.Publish("MCThings/" + mcUIDString + "/" + topic, text_string)
+    End Sub
+    
+    Shared Sub Publish_exact(topic As String, text As String)
+        Dim text_String As ListOfByte = New ListOfByte()
+        text_String.Add(text)
+        Lplan.Publish(topic, text_String)
+    End Sub
+    
+    //**************************************************************************/
+    //*!
+    //    Encodes Float or Integer into 4 bytes of beacon data
+    //    encoding is - byte 0 is data type (numeric value)
+    //    Integer as Short (2 bytes) 
+    //    Fraction as byte (1 byte)
+    //*/
+    //**************************************************************************/
+    Shared Sub BeaconPublish(data_Type As Byte, value As Object)
+        Dim fraction As Byte = 0
+        Dim data As Short = 0
+        If value Is Float Then
+            data = value.Cast(Float).ToShort() //get integer part (16 bit only)
+            fraction = ((value.Cast(Float) - data) * 100.0).ToByte()
+        ElseIf value Is Integer Then
+            data = value.Cast(Integer).ToShort() //get integer part (16 bit only)
+        ElseIf value Is Short Then
+            data = value.Cast(Short)
+        ElseIf value Is Byte Then
+            data = value.Cast(Byte).ToShort() //get integer part (16 bit only)
+        ElseIf value Is Boolean Then
+            Dim on As Boolean = value.Cast(Boolean)
+            If on Then
+                data = 1
+            End If
+        End If
+        Dim beaconData As ListOfByte = New ListOfByte()
+        beaconData.Add(data_Type)
+        beaconData.AddShort(data)
+        beaconData.Add(fraction)
+        Lplan.SetBeaconData(beaconData)
+        Lplan.SendBeacon()
+        //Lplan.BeaconNow () //does not seem to work
+    End Sub
+    
+    Shared Sub Subscribe(topic As String)
+        Lplan.Subscribe(topic)
+    End Sub
+    
+End Class

@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <ProjectName>BatteryMonitor</ProjectName>
+  <ProjectName>TemperaturePublish</ProjectName>
   <DeviceType>mcMod110</DeviceType>
-  <LastDocumentName>BatteryMonitor.mcScript</LastDocumentName>
+  <LastDocumentName>..\..\Examples\TempSensor.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
-      <Name>BatteryMonitor</Name>
-      <FileSpec>BatteryMonitor.mcScript</FileSpec>
+      <Name>TemperaturePublish</Name>
+      <FileSpec>TemperaturePublish.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
       <Name>MQTT</Name>
-      <FileSpec>..\..\Examples\MQTT.mcScript</FileSpec>
+      <FileSpec>MQTT.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
