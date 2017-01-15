@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-__version__ = "1.0"
+__version__ = "1.1"
 '''
 Python 2.7
 Quick Program to log mqtt data (normally from mcThings modules, but could work with anything)
 
 Nick Wateron 13th January 2017: V 1.0: Initial Release
+Nick Waterton15th January 2017: V 1.1: Added Nan Handling. No warning on +/-5s publising delays
 '''
 
 #from __future__ import print_function  #if you want python 3 print function
@@ -33,8 +34,9 @@ def decode_payload(payload):
     indent = master_indent + 31 #number of spaces to indent json data
     try:
         #if it's json data, decode it (use OrderedDict to preserve keys order), else return as is...
-        json_data = json.loads(payload, object_pairs_hook=OrderedDict)
-
+        json_data = json.loads(payload.replace(":nan", ":NaN"), object_pairs_hook=OrderedDict)
+        if not isinstance(json_data, dict): #if it's not a dictionary, probably just a number
+            return json_data
         publish_delay_string = ''
         if "time" in json_data.keys():
             try:
@@ -51,7 +53,7 @@ def decode_payload(payload):
                 
                 if publish_delay > 5000:    #date/time set wrong on module
                     publish_delay_string = "Date/time not updated on module\n"
-                elif publish_delay > 2:
+                elif publish_delay > 5 or publish_delay < -5:   #no warning on +/-5 seconds delay
                     publish_delay_string = "WARNING: Publishing Delay of : %.3f s\n" % publish_delay
                 else:
                     publish_delay_string = "Publishing Delay of          : %.3f s\n" % publish_delay
@@ -59,7 +61,9 @@ def decode_payload(payload):
                 timestamp = e
         json_data_string = "\n".join((indent * " ") + i for i in (publish_delay_string+json.dumps(json_data, indent = 2)).splitlines())
         formatted_data = "Decoded timestamp: %s\n%s" % (timestamp, json_data_string)
-    except:
+    #except ValueError as e:
+    except Exception as e:
+        log.warn("Error Decoding json: %s" %e)
         formatted_data = payload
 
     return formatted_data
