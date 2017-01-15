@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-__version__ = "1.1"
+__version__ = "1.2"
 '''
 Python 2.7
 Quick Program to log mqtt data (normally from mcThings modules, but could work with anything)
 
 Nick Waterton 13th January 2017: V 1.0: Initial Release
-Nick Waterton 15th January 2017: V 1.1: Added Nan Handling. No warning on +/-5s publishing delays
+Nick Waterton 15th January 2017: V 1.2: Added Nan Handling. No warning on +/-5s publishing delays, fixed stupid mistakes.
 '''
 
 #from __future__ import print_function  #if you want python 3 print function
@@ -32,6 +32,7 @@ def decode_payload(payload):
     decode timestamp (if any), and format json for pretty printing
     '''
     indent = master_indent + 31 #number of spaces to indent json data
+    timestamp = None
     try:
         #if it's json data, decode it (use OrderedDict to preserve keys order), else return as is...
         json_data = json.loads(payload.replace(":nan", ":NaN"), object_pairs_hook=OrderedDict)
@@ -60,7 +61,11 @@ def decode_payload(payload):
             except ValueError as e:
                 timestamp = e
         json_data_string = "\n".join((indent * " ") + i for i in (publish_delay_string+json.dumps(json_data, indent = 2)).splitlines())
-        formatted_data = "Decoded timestamp: %s\n%s" % (timestamp, json_data_string)
+        if timestamp:
+            formatted_data = "Decoded timestamp: %s\n%s" % (timestamp, json_data_string)
+        else:
+            formatted_data = "Decoded JSON: \n%s" % (json_data_string)
+            
     except ValueError as e:
         formatted_data = payload
     except Exception as e:
