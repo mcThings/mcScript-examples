@@ -7,7 +7,7 @@ Python 2.7
 Quick Program to log mqtt data (normally from mcThings modules, but could work with anything)
 
 Nick Waterton 13th January 2017: V 1.0: Initial Release
-Nick Waterton 15th January 2017: V 1.1: Added Nan Handling. No warning on +/-5s publising delays
+Nick Waterton 15th January 2017: V 1.1: Added Nan Handling. No warning on +/-5s publishing delays
 '''
 
 #from __future__ import print_function  #if you want python 3 print function
@@ -61,9 +61,10 @@ def decode_payload(payload):
                 timestamp = e
         json_data_string = "\n".join((indent * " ") + i for i in (publish_delay_string+json.dumps(json_data, indent = 2)).splitlines())
         formatted_data = "Decoded timestamp: %s\n%s" % (timestamp, json_data_string)
-    #except ValueError as e:
+    except ValueError as e:
+        formatted_data = payload
     except Exception as e:
-        log.warn("Error Decoding json: %s" %e)
+        log.warn("Error : %s" %e)
         formatted_data = payload
 
     return formatted_data
