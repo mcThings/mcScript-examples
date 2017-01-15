@@ -6,8 +6,8 @@ __version__ = "1.1"
 Python 2.7
 Quick Program to log mqtt data (normally from mcThings modules, but could work with anything)
 
-Nick Wateron 13th January 2017: V 1.0: Initial Release
-Nick Waterton15th January 2017: V 1.1: Added Nan Handling. No warning on +/-5s publising delays
+Nick Waterton 13th January 2017: V 1.0: Initial Release
+Nick Waterton 15th January 2017: V 1.1: Added Nan Handling. No warning on +/-5s publising delays
 '''
 
 #from __future__ import print_function  #if you want python 3 print function
