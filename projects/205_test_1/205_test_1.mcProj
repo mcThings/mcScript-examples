@@ -26,8 +26,15 @@
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
+      <Name>Time</Name>
+      <FileSpec>..\..\Examples\Time.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
       <Name>LIS2DH12</Name>
-      <FileSpec>LIS2DH12.mcScript</FileSpec>
+      <FileSpec>..\..\Examples\LIS2DH12.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />

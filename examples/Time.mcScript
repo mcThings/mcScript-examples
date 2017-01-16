@@ -2,9 +2,9 @@
 // NOTE: If you include this library, you cannot use Device.GetTimeSpan() anywhere else in your program
 //       As this library uses it for the basis of all timimg.
 //       You can get the same functionality as Device.GetTimeSpan() by declaring a new timer like this:
-//       Shared timer1 As Timer //class variable
+//       Shared timer1 As Timing //class variable
 //       declared in code (boot() or somewhere)
-//       timer1 = New Timer()
+//       timer1 = New Timing()
 //       Then use it as timer1.GetTimeSpan() (for milliseconds) or
 //       timer1.GetTimeSpan(True) to get microsconds (normal Device.GetTimeSpan() function)
 

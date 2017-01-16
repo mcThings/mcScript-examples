@@ -1,11 +1,11 @@
 ﻿// 205 Demo Test
-// Requires TempSensor, MQTT and LIS2DH12 libraries
+// Requires TempSensor, MQTT, LIS2DH12 and Time libraries
 // Note this requires the 14th Jan 2017 MQTT library, previous versions cause runtime error.
 // Also needs LIS2DH12 V 4 or above library.
 // Publishes status every 1 minute/10 seconds for testing (unless disabled) to mqtt topic "MCThings/" followed by device uid
 // Publishing of data (and LED indication) can be disabled (to save battery) by publishing "True" or "False" to "MCThings/" <device uid>  "/EnablePublish" - enabled by default
 // Publishes data in beacons also (always).
-// Uses accelerometer detection to sense motion, then publishes location via GPX fix
+// Uses accelerometer detection to sense motion, then publishes location via GPS fix
 // you can set variable Publish_on_Motion to publish GPS location on motion start, or when motion stops
 // NOTE: need unobstructed access to satelites to get valid fix (or you get NaN for lat, long)
 // Obviously just a testbed, you would really need to publish via SigFox - if we had a SigFox network in Canada.
@@ -14,19 +14,23 @@
 // Pushbuttons - button 1 = trigger GPS, button 2 short press = toggle GPS on start/end of motion, Long press = toggle publishing on/off
 
 // N Waterton 14th January 2017 V1.0: Beta Release - first cut
+// N Waterton 16th January 2017 V1.1: Added Time Library
 
 Define PinMode Pin3 As DigitalOutput Alias EnableBatteryMeasurement
 Define PinMode Pin8 As AnalogInput Alias BatteryVoltage
 'Define PinMode Pin2 As PwmOutput
 
 Class Main
-    Const Version As String = "V1.0"
+    Const Version As String = "V1.1"
     Shared data As dataType
     Shared Sub_Topic_Publish_Enable As String
     Shared Sub_Topic_Publish_on_Motion As String
     Shared Publish_data As Boolean
     Shared Publish_on_Motion As Boolean
     Shared accel As LIS2DH12
+    Shared last_lat As Float
+    Shared last_long As Float
+    Shared last_GPS_fix As String
     Shared PublishingLocation As Boolean //used to indicate GPS busy
     Shared Motion_Detected As Boolean //used to detect start of motion
     Shared End_Motion_flag As Boolean //used to detect end of motion
@@ -38,6 +42,9 @@ Class Main
         Publish_data = True
         //Publish_on_Motion = True
         PublishingLocation = False
+        last_lat = Float.NaN
+        last_long = Float.NaN
+        last_GPS_fix = "None"
         Sub_Topic_Publish_Enable = "MCThings/" + Device.mcUID().ToString("X8") + "/EnablePublish"
         Sub_Topic_Publish_on_Motion = "MCThings/" + Device.mcUID().ToString("X8") + "/PublishMotion"
         MQTT.Subscribe(Sub_Topic_Publish_Enable)
@@ -47,8 +54,7 @@ Class Main
         If accel.online Then
             MQTT.Publish("Status", "LIS2DH12TR Sensor Online")
             If LIS2DH12.VERSION <= 3 Then
-                'set accelerometer to cause interrupt if accelation is > 1.15Gs for longer than 2ms (Z axis)
-                accel.ConfigureShockInterrupt(1.15, 20.0)
+                MQTT.Publish("Status", "LIS2DH12 Library is out of Date, please upgrade!")
             Else
                 'later versions of library
                 'set up mode, all axis
@@ -68,119 +74,9 @@ Class Main
         MQTT.Subscribe(Sub_Topic_Publish_on_Motion)
     End Event
     
-    Public Function getUptimeString() As String
-        //Kludge until DateTime Functions work
-        Dim secs As Integer = Device.Uptime()
-        
-        Dim day As Integer = (secs / 86400).ToInteger
-        secs -= 86400 * day
-        Dim hrs As Integer = (secs / 3600).ToInteger
-        secs -= 3600 * hrs
-        Dim mins As Integer = (secs / 60).ToInteger
-        secs -= 60 * mins
-        
-        Dim uptime_string As String = day.ToString+ ":" + hrs.ToString+ ":" + mins.ToString+ ":" + secs.ToString
-        Return uptime_string
-    End Function
-    
-    Shared MillisecondsTimespan As Integer //Previous value used by GetTimeSpan()
-    Shared TimeTravel As Boolean //Used by GetTimeSpan() to detect setting of RTC
-    Shared offset As Integer //Used by GetTimeSpan() to store current offset
-    
-    Public Function GetTimeSpan() As Integer
-        'replacement for built in function Device.GetTimeSpan()
-        'as you can only use it once per program, but reporting milliseconds, not microseconds.
-        'uses Shared MillisecondsTimespan As Integer
-        'Shared TimeTravel As Boolean
-        'Shared offset As Integer all defined in Class
-        Dim current_timestamp As Integer = 0
-        Dim time_span As Integer = 0
-        
-        Dim time_now As Integer = DateTime.Now().ToInteger()
-        If time_now > DateTime.Create(2017, 1, 1, 0, 0, 0).ToInteger() And Not TimeTravel Then
-            TimeTravel = True
-            offset = 0 - time_now 'reset offset if date time changes (ie RTC gets set)
-            MillisecondsTimespan = Integer.MaxValue 'return bogus big number as timespan is not valid
-        End If
-        
-        If Not Integer.TryConvert(GetTimestamp(3, offset), current_timestamp) Then
-            MQTT.Publish("Status", "GetTimeSpan(): Overflow")
-            current_timestamp = 0
-            MillisecondsTimespan = 0
-        End If
-        
-        time_span = current_timestamp - MillisecondsTimespan
-        MillisecondsTimespan = current_timestamp
-        
-        If time_span <= 0 Then 'can't have negative time span...
-            offset = 0 - time_now 'reset offset if we overflow
-            Return Integer.MaxValue 'return bogus big number as timespan is not valid
-        End If
-        Return time_span
-    End Function
-    
     Public Function GetTimestamp() As String
         'default format (milliseconds format, epoch is unix style)
-        Return GetTimestamp(3, -1)
-    End Function
-    
-    Shared MillisecondsOffset As Integer //Offset used by GetTimeStamp()
-    
-    Public Function GetTimestamp(format As Byte, TimestampOffset As Integer) As String
-        'get unix type timestamp with different formats:
-        '1: return just seconds
-        '2: return seconds as milliseconds (ie ends in 000)
-        '3: return milliseconds (fudge with GetTimeSpan())
-        '4: return seconds.milliseconds (fudge with GetTimeSpan())
-        'add offset 946670400 (seconds) to get epoch as unix format ie since 1st Jan 1970
-        'otherwise epoc is 1st Jan 2000
-        'return as string as we do not have a long data type
-        'Shared MillisecondsOffset As Integer defined in Class
-        If (TimestampOffset = -1) Then
-            TimestampOffset = 946670400
-        End If
-        
-        Dim Timestamp_seconds_string As String = (DateTime.Now().ToInteger() + TimestampOffset).ToString()
-        Dim Timestamp_microseconds As Integer = Device.GetTimeSpan()
-        Dim Timestamp_milliseconds As Integer = ((Timestamp_microseconds % 1000000) / 1000).ToInteger()
-        
-        If Timestamp_microseconds < 0 Then 'account for overflow
-            Timestamp_milliseconds = 0
-            MillisecondsOffset = 0
-        End If
-        
-        Timestamp_milliseconds = (Timestamp_milliseconds + MillisecondsOffset) % 1000
-        MillisecondsOffset = Timestamp_milliseconds
-        
-        Dim Timestamp_milliseconds_string As String = Timestamp_milliseconds.ToString("D3")
-        
-        'If I could figure out what the string formatters are, wouldn't need this
-        '"D3", and "000" don't work.
-        If (Timestamp_milliseconds_string.Length() < 3) Then
-            If (Timestamp_milliseconds_string.Length() = 1) Then
-                Timestamp_milliseconds_string = "00" + Timestamp_milliseconds_string
-            ElseIf (Timestamp_milliseconds_string.Length() = 2) Then
-                Timestamp_milliseconds_string = "0" + Timestamp_milliseconds_string
-            Else 
-                Timestamp_milliseconds_string = "000"
-            End If
-        End If
-        
-        Dim formatted_string As String
-        
-        Select format
-            Case 1
-                formatted_string = Timestamp_seconds_string
-            Case 2
-                formatted_string = Timestamp_seconds_string + "000"
-            Case 3
-                formatted_string = Timestamp_seconds_string + Timestamp_milliseconds_string
-            Case 4
-                formatted_string = Timestamp_seconds_string + "." + Timestamp_milliseconds_string
-            Case Else
-                formatted_string = Timestamp_seconds_string + Timestamp_milliseconds_string
-        End Select
-        Return formatted_string
+        Return Timing.GetTimestamp()
     End Function
     
     Public Sub setLed2(on As Boolean)
@@ -300,32 +196,40 @@ Class Main
         //make json data
         Dim jData As Json = New Json
         jData.Add("time", GetTimestamp())
-        jData.Add("GPSActive", True)
+        jData.Add("GPSActive", PublishingLocation)
         MQTT.Publish("Data", jData)
         Thread.ClearHardwareEvent()
     End Sub
     
     Shared Event LocationDelivery()
         'Called when GNSS location acquired or timeout occurred
-        PublishingLocation = True
         'Get latitude
         Dim Lat As Float = Device.GetLatitude()
         'Get longitude
         Dim Lon As Float = Device.GetLongitude()
         'Get GNSS fix time
-        Dim fixTime As Integer = Device.GetGpsFixTime()
+        Dim fixTime As Integer = (Device.GetGpsFixTime() / 1000000).ToInteger()
+        
+        If Not Lat.IsNaN() And Not Lon.IsNaN() Then
+            last_lat = Lat
+            last_long = Lon
+            last_GPS_fix = DateTime.Now().ToString("Z")
+            'last_GPS_fix = GetTimestamp()
+        End If
+        
+        PublishingLocation = False
         
         Dim jData As Json = New Json
         jData.Add("time", GetTimestamp())
+        jData.Add("last_GPS_fix", last_GPS_fix)
         jData.Add("latitude", Lat)
         jData.Add("longitude", Lon)
         jData.Add("GPS_fix_time", fixTime)
-        jData.Add("GPSActive", False)
+        jData.Add("GPSActive", PublishingLocation)
         MQTT.Publish("Data", jData)
         
         //Led3Flash()
         setLed3(False)
-        PublishingLocation = False
     End Event
     
     Shared Event SubscriptionDelivery()
@@ -360,7 +264,7 @@ Class Main
         End If
     End Event
     
-    Public Function GetBatteryVoltage() As Float
+    Public Function GetBatteryVoltage() As Integer
         'Enable battery voltage measurement resistor divider
         EnableBatteryMeasurement = True
         Thread.Sleep(20000)
@@ -369,9 +273,9 @@ Class Main
         
         'Convert measured voltage to actual battery voltage
         'Battery voltage scaler based on mcDemo205 hardware
-        Dim batVoltage As Float = voltgeMv * 3.546
+        Dim batVoltage As Integer = (voltgeMv * 3.546).ToInteger()
         
-        Return batVoltage
+        Return batVoltage //In mV
     End Function
     
     Public Sub PublishSettings()
@@ -392,21 +296,33 @@ Class Main
     
     Shared Event Publish() RaiseEvent Every 1 Minutes
         Dim Uptime As Integer = Device.Uptime()
-        Dim UptimeString As String = getUptimeString()
-        Dim BattVolt As Float = GetBatteryVoltage()
+        Dim UptimeString As String = Timing.getUptimeString()
+        Dim BattVolt As Integer = GetBatteryVoltage()
         Dim TempC As Float = TempSensor.GetTemp
         If Publish_data Then
             //make json data
             Dim jData As Json = New Json
             jData.Add("time", GetTimestamp())
-            jData.Add("Uptime", Uptime)
+            jData.Add("Uptime", Uptime)        
             jData.Add("UptimeString", UptimeString)
             jData.Add("BatteryVoltage", BattVolt)
             jData.Add("Temperature", TempC)
+            '            jData.Add("last_lat", last_lat)
+            '            jData.Add("last_long", last_long)
+            '            jData.Add("last_GPS_fix", last_GPS_fix)
+            '            jData.Add("GPSActive", PublishingLocation)
             jData.Add("PublishEnable", Publish_data)
             jData.Add("Publish_on_Motion", Publish_on_Motion)
             MQTT.Publish("Data", jData)
         End If
+        //make json data
+        Dim jgps As Json = New Json
+        jgps.Add("time", GetTimestamp())
+        jgps.Add("last_lat", last_lat)
+        jgps.Add("last_long", last_long)
+        jgps.Add("last_GPS_fix", last_GPS_fix)
+        jgps.Add("GPSActive", PublishingLocation)
+        MQTT.Publish("Data", jgps)
         
         Select data
             Case dataType.UPTIME
