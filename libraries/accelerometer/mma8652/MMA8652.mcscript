@@ -1,0 +1,268 @@
+﻿Class MMA8652 
+    'Constants
+    Const MMA8652_I2C_ADDR As Byte = 0x1d
+    Const I2C_SPEED As Integer = 250000
+    
+    'Registers
+    Const STATUS_REG As Byte = 0x00
+    Const OUT_X_MSB_REG As Byte = 0x01
+    Const OUT_X_LSB_REG As Byte = 0x02
+    Const OUT_Y_MSB_REG As Byte = 0x03
+    Const OUT_Y_LSB_REG As Byte = 0x04
+    Const OUT_Z_MSB_REG As Byte = 0x05
+    Const OUT_Z_LSB_REG As Byte = 0x06
+    Const F_SETUP_REG As Byte = 0x09
+    Const TRIG_CFG_REG As Byte = 0x0a
+    Const SYS_MOD_REG As Byte = 0x0b
+    Const INT_SOURCE_REG As Byte = 0x0c
+    Const WHO_AM_I_REG As Byte = 0x0d
+    Const XYZ_DATA_CFG_REG As Byte = 0x0e
+    Const HP_FILTER_CUTOFF_REG As Byte = 0x0f
+    Const PL_STATUS_REG As Byte = 0x10
+    Const PL_CFG_REG As Byte = 0x11
+    Const PL_COUNT_REG As Byte = 0x12
+    Const PL_BF_ZCOMP_REG As Byte = 0x13
+    Const PL_THS_REG As Byte = 0x14
+    Const FF_MT_CFG_REG As Byte = 0x15
+    Const FF_MT_SRC_REG As Byte = 0x16
+    Const FF_MT_THS_REG As Byte = 0x17
+    Const FF_MT_COUNT_REG As Byte = 0x18    
+    Const TRANSIENT_CFG_REG As Byte = 0x1d
+    Const TRANSIENT_SRC_REG As Byte = 0x1e
+    Const TRANSIENT_THS_REG As Byte = 0x1f
+    Const TRANSIENT_COUNT_REG As Byte = 0x20    
+    Const PULSE_CFG_REG As Byte = 0x21
+    Const PULSE_SRC_REG As Byte = 0x22
+    Const PULSE_THSX_REG As Byte = 0x23
+    Const PULSE_THSY_REG As Byte = 0x24
+    Const PULSE_THSZ_REG As Byte = 0x25
+    Const PULSE_TMLT_REG As Byte = 0x26
+    Const PULSE_LTCY_REG As Byte = 0x27
+    Const PULSE_WIND_REG As Byte = 0x28
+    Const ASLP_COUNT_REG As Byte = 0x29    
+    Const CTRL_REG1_REG As Byte = 0x2a
+    Const CTRL_REG2_REG As Byte = 0x2b
+    Const CTRL_REG3_REG As Byte = 0x2c
+    Const CTRL_REG4_REG As Byte = 0x2d
+    Const CTRL_REG5_REG As Byte = 0x2e    
+    Const OFF_X_REG As Byte = 0x2f
+    Const OFF_Y_REG As Byte = 0x30
+    Const OOF_Z_REG As Byte = 0x31
+    
+    
+    
+    Const LOW_TRIGGER_THRESHOLD As Float = 0.0
+    Const HIGH_TRIGGER_THRESHOLD As Float = 8.0
+    Const TRANSIENT_THRESHOLD_RESOLUTION As Float = 0.063
+    
+    Const LOW_DURATION_MS As Float = 0.0
+    Const HIGH_DURATION_MS As Float = 5100.0
+    Const DURATION_RESOLUTION As Float = 20
+    
+    Public gAccelerometer As I2c
+    Public gAddr As ListOfByte 
+    Public gData As ListOfByte 
+    
+    Public Sub New()
+        
+        gAccelerometer = I2c.Create(I2C_SPEED, Pin.SCL, Pin.SDA, MMA8652_I2C_ADDR)
+        gAddr = New ListOfByte()
+        gData = New ListOfByte()
+        
+    End Sub
+    
+    
+    'ConfigureShockInterrupt - configures device to interrupt on shock (currently will interupt on any axis, x,y,z axis configuration can be added later)
+    '
+    'threshold As Float - trigger threshold (0.0 Gs ~ 23.622 Gs), 0.186mg steps
+    'Duration As Integer - Duration for threshold to be present to active interrupt (0 ms (immediate) to 320ms), 2.5ms steps
+    Public Function ConfigureShockInterrupt(threshold As Float, duration As Float) As Boolean
+        Dim result As Boolean = False
+        Dim thresholdByte As Byte = 0
+        Dim durationByte As Byte = 0
+        
+        If ((threshold >= LOW_TRIGGER_THRESHOLD And threshold <= HIGH_TRIGGER_THRESHOLD)) And ((duration >= LOW_DURATION_MS And duration <= HIGH_DURATION_MS)) Then 
+            'Convert threshold to 7 bit byte
+            threshold = threshold / TRANSIENT_THRESHOLD_RESOLUTION
+            thresholdByte = threshold.ToByte
+            duration = duration / DURATION_RESOLUTION
+            durationByte = duration.ToByte
+            
+            'Put device in standby mode
+            Standby()
+            
+            'Set registers
+            'Set to 50Hz
+            result = WriteSingleByte(CTRL_REG1_REG, 0x20)
+            'Low Power Mode
+            result = WriteSingleByte(CTRL_REG2_REG, 0x1b)
+            'Wakeup if transient interrupt, push/pull, active low
+            result = WriteSingleByte(CTRL_REG3_REG, 0x40)
+            'enable transient interrupts
+            result = WriteSingleByte(CTRL_REG4_REG, 0x20)
+            'route interrupt to INT1 pin
+            result = WriteSingleByte(CTRL_REG5_REG, 0x20)
+            'latch events and enable on all axis
+            result = WriteSingleByte(TRANSIENT_CFG_REG, 0x1e)
+            'Set Threshold 0.0 ~ 23.622 Gs
+            result = WriteSingleByte(TRANSIENT_THS_REG, thresholdByte)
+            'Set Duration (currently set to 0, causes interrupt immediately, once threshold exceeded
+            result = WriteSingleByte(TRANSIENT_COUNT_REG, durationByte)
+            
+            'Put device in active mode
+            Active()
+            
+            result = True
+        Else
+            'incorrect range, return error
+            result = False
+        End If
+        
+    End Function
+    
+    
+    
+    'ConfigureOrientationInterrupt - configures device to interrupt on orientation change
+    '
+    'threshold As Float - trigger threshold (0.0 Gs ~ 23.622 Gs), 0.186mg steps
+    'Duration As Integer - Duration for threshold to be present to active interrupt (0 ms (immediate) to 320ms), 2.5ms steps
+    Public Function ConfigureOrientationInterrupt(threshold As Float, duration As Float) As Boolean
+        Dim result As Boolean = False
+        Dim thresholdByte As Byte = 0
+        Dim durationByte As Byte = 0
+        
+        If ((threshold >= LOW_TRIGGER_THRESHOLD And threshold <= HIGH_TRIGGER_THRESHOLD)) And ((duration >= LOW_DURATION_MS And duration <= HIGH_DURATION_MS)) Then 
+            'Convert threshold to 7 bit byte
+            threshold = threshold / TRANSIENT_THRESHOLD_RESOLUTION
+            thresholdByte = threshold.ToByte
+            duration = duration / DURATION_RESOLUTION
+            durationByte = duration.ToByte
+            
+            'Put device in standby mode
+            Standby()
+            
+            'Set registers
+            'Set to 50Hz
+            result = WriteSingleByte(CTRL_REG1_REG, 0x00)
+            'Low Power Mode
+            result = WriteSingleByte(CTRL_REG2_REG, 0x04)
+            'Wakeup if orientation interrupt, push/pull, active low
+            result = WriteSingleByte(CTRL_REG3_REG, 0x20)
+            'enable orientation interrupts
+            result = WriteSingleByte(CTRL_REG4_REG, 0x10)
+            'route interrupt to INT1 pin
+            result = WriteSingleByte(CTRL_REG5_REG, 0xff)
+            
+            result = WriteSingleByte(PL_CFG_REG, 0xc0)
+            
+            result = WriteSingleByte(PL_COUNT_REG, 0x10)
+            
+            result = WriteSingleByte(PL_BF_ZCOMP_REG, 0x07)
+            
+            'result = WriteSingleByte(PL_THS_REG, 0x00)
+            
+            'Put device in active mode
+            Active()
+            
+            result = True
+        Else
+            'incorrect range, return error
+            result = False
+        End If
+        
+    End Function
+    
+    
+    
+    
+    Public Function SetRange(range As Byte) As Boolean
+        'Set Range 
+        Dim result As Boolean = False
+        
+        If range = 0x01 Then 
+            '+/-2G range
+            
+        ElseIf range = 0x02 Then 
+            '+/-4G range
+            
+        ElseIf range = 0x03 Then 
+            '+/-8G range
+            
+        Else
+            'Invalid range
+            
+        End If
+        
+        
+        
+        Return result
+        
+    End Function
+    
+    Public Function Standby() As Boolean
+        Dim dataByte As Byte
+        
+        'read status register
+        dataByte = ReadSingleByte(CTRL_REG1_REG) 
+        'set active bit to put accel in active mode
+        dataByte = dataByte & ~0x01
+        WriteSingleByte(CTRL_REG1_REG, dataByte)
+        
+        Return True
+    End Function
+    
+    Public Function Active() As Boolean
+        Dim dataByte As Byte
+        
+        'read status register
+        dataByte = ReadSingleByte(CTRL_REG1_REG) 
+        'set active bit to put accel in active mode
+        dataByte = dataByte | 0x01
+        WriteSingleByte(CTRL_REG1_REG, dataByte)
+        
+        Return True
+    End Function
+    
+    Public Function WriteSingleByte(reg_addr As Byte, data_byte As Byte) As Boolean
+        
+        Dim result As Boolean = False
+        
+        gAddr.Clear()
+        gAddr.Add(reg_addr)
+        gAddr.Add(data_byte) 
+        result = gAccelerometer.Write(gAddr, True)
+        
+        Return result
+        
+    End Function
+    
+    Public Function ReadSingleByte(reg_addr As Byte) As Byte
+        
+        Dim result As Byte
+        
+        gAddr.Clear()
+        gData.Clear()
+        gAddr.Add(reg_addr)     
+        gAccelerometer.Write(gAddr, False)
+        gData = gAccelerometer.Read(1, True)
+        
+        result = gData(0)
+        
+        Return result
+        
+    End Function
+    
+    Public Function Orientation() As Byte
+        
+        'get orientation
+        gAddr.Clear()
+        gData.Clear()
+        gAddr.Add(PL_STATUS_REG)    
+        gAccelerometer.Write(gAddr, False)
+        gData = gAccelerometer.Read(1, True)
+        
+        'return the orientation
+        Return gData(0)
+    End Function    
+    
+End Class

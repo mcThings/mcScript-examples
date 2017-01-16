@@ -1,0 +1,186 @@
+﻿// Library of timing functions
+// NOTE: If you include this library, you cannot use Device.GetTimeSpan() anywhere else in your program
+//       As this library uses it for the basis of all timimg.
+//       You can get the same functionality as Device.GetTimeSpan() by declaring a new timer like this:
+//       Shared timer1 As Timer //class variable
+//       declared in code (boot() or somewhere)
+//       timer1 = New Timer()
+//       Then use it as timer1.GetTimeSpan() (for milliseconds) or
+//       timer1.GetTimeSpan(True) to get microsconds (normal Device.GetTimeSpan() function)
+
+//       You can declare multiple timers, to get multiple instances of GetTimeSpan()
+
+// Provide functions:
+// getUptimeString()
+// GetTimeSpan()
+// GetTimestamp()
+
+// see code below for arguments and return values.
+
+// N Waterton 16th January 2016 V1.0: Beta Release - First Release
+
+
+Enum TIME_FORMAT As Byte
+    '1: seconds //alternate unix timestamp format
+    '2: seconds as milliseconds (ie ends in 000)
+    '3: milliseconds //unix format
+    '4: seconds.milliseconds
+    '5: microseconds
+    '5: seconds.microseconds
+    NONE = 0
+    T_SECONDS = 1
+    T_SECONDS_AS_MILLISECONDS = 2
+    T_MILLISECONDS = 3
+    T_SECONDS_MILLISECONDS = 4
+    T_MICROSECONDS = 5
+    T_SECONDS_MICROSECONDS = 6
+End Enum
+
+Class Timing
+    Const VERSION As Integer = 1
+    
+    Public Sub New()
+    End Sub
+    
+    Shared Function getUptimeString() As String
+        //get uptime in days:hours:minutes:seconds format
+        Dim secs As Integer = Device.Uptime()
+        
+        Dim day As Integer = (secs / 86400).ToInteger
+        secs -= 86400 * day
+        Dim hrs As Integer = (secs / 3600).ToInteger
+        secs -= 3600 * hrs
+        Dim mins As Integer = (secs / 60).ToInteger
+        secs -= 60 * mins
+        
+        Dim uptime_string As String = day.ToString("D3") + ":" + hrs.ToString("D2") + ":" + mins.ToString("D2") + ":" + secs.ToString("D2")
+        Return uptime_string
+    End Function
+    
+    Public MicrosecondsTimespan As Integer //Previous value used by GetTimeSpan()
+    Public TimeTravel As Boolean //Used by GetTimeSpan() to detect setting of RTC
+    Public offset As Integer //Used by GetTimeSpan() to store current offset
+    
+    Public Function GetTimeSpan() As Integer
+        'return default value as milliseconds
+        Return GetTimeSpan(False)
+    End Function
+    
+    Public Function GetTimeSpan(Micros As Boolean) As Integer
+        'replacement for built in function Device.GetTimeSpan()
+        'can declare multiple instances of it, but DO NOT USE Device.GetTimeSpan() anywhere else in your code!
+        'Micros = False: return milliseconds
+        'Micros = True: return microseconds // usual format for GetTimeSpan()
+        'uses Shared MicrosecondsTimespan As Integer
+        'Shared TimeTravel As Boolean
+        'Shared offset As Integer all defined in Class
+        Dim current_timestamp As Integer = 0
+        Dim time_span As Integer = 0
+        
+        Dim time_now As Integer = DateTime.Now().ToInteger()
+        If time_now > DateTime.Create(2017, 1, 1, 0, 0, 0).ToInteger() And Not TimeTravel Then
+            TimeTravel = True
+            offset = 0 - time_now 'reset offset if date time changes (ie RTC gets set)
+            MicrosecondsTimespan = Integer.MaxValue 'return bogus big number as timespan is not valid
+        End If
+        
+        Dim current_timestamp_string As String = Timing.GetTimestamp(TIME_FORMAT.T_MICROSECONDS, offset)
+        If Not Integer.TryConvert(current_timestamp_string, current_timestamp) Then
+            MQTT.Publish("Status", "GetTimeSpan(): Overflow")
+            current_timestamp = 0
+            MicrosecondsTimespan = 0
+        End If
+        
+        time_span = current_timestamp - MicrosecondsTimespan
+        MicrosecondsTimespan = current_timestamp
+        
+        If time_span <= 0 Then 'can't have negative time span...
+            offset = 0 - time_now 'reset offset if we overflow
+            Return Integer.MaxValue 'return bogus big number as timespan is not valid
+        End If
+        If Micros Then
+            Return time_span //microseconds
+        Else
+            Return (time_span / 1000).ToInteger() //milliseconds
+        End If
+    End Function
+    
+    Shared Function GetTimestamp() As String
+        'default format (milliseconds format, epoch is unix style)
+        Return Timing.GetTimestamp(TIME_FORMAT.T_MILLISECONDS, -1)
+    End Function
+    
+    Shared MicrosecondsOffset As Integer //Offset used by GetTimeStamp()
+    
+    Shared Function GetTimestamp(format As TIME_FORMAT, TimestampOffset As Integer) As String
+        'get unix type timestamp with different formats:
+        'T_SECONDS: return just seconds
+        'T_SECONDS_AS_MILLISECONDS: return seconds as milliseconds (ie ends in 000)
+        'T_MILLISECONDS: return milliseconds (fudge with GetTimeSpan())
+        'T_SECONDS_MILLISECONDS: return seconds.milliseconds (fudge with GetTimeSpan())
+        'T_MICROSECONDS: return microseconds (fudge with GetTimeSpan())
+        'T_SECONDS_MICROSECONDS: return seconds.microseconds (fudge with GetTimeSpan())
+        'add offset 946670400 (seconds) to get epoch as unix format ie since 1st Jan 1970
+        'otherwise epoc is 1st Jan 2000
+        'return as string as we do not have a long data type
+        'Shared MicrosecondsOffset As Integer defined in Class
+        If (TimestampOffset = -1) Then
+            TimestampOffset = 946670400
+        End If
+        
+        Dim Timestamp_seconds_string As String = (DateTime.Now().ToInteger() + TimestampOffset).ToString()
+        Dim Timestamp_microseconds As Integer = Device.GetTimeSpan()
+        Timestamp_microseconds = Timestamp_microseconds % 1000000
+        
+        If Timestamp_microseconds < 0 Then 'account for overflow
+            Timestamp_microseconds = 0
+            MicrosecondsOffset = 0
+        End If
+        
+        Timestamp_microseconds = (Timestamp_microseconds + MicrosecondsOffset) % 1000000
+        MicrosecondsOffset = Timestamp_microseconds
+        
+        Dim Timestamp_microseconds_string As String = Timestamp_microseconds.ToString("D6")
+        
+        'If I could figure out what the string formatters are, wouldn't need this
+        '"D3", and "000" don't work.
+        
+        Dim zeros As String = ""
+        Select Timestamp_microseconds_string.Length()
+            Case 1
+                zeros = "00000"
+            Case 2
+                zeros = "0000"
+            Case 3
+                zeros = "000"
+            Case 4
+                zeros = "00"
+            Case 5
+                zeros = "0"
+        End Select
+        
+        Timestamp_microseconds_string = zeros + Timestamp_microseconds_string
+        Dim Timestamp_milliseconds_string As String = Timestamp_microseconds_string.SubString(0, 3) //just truncate, as no rounding funtion...
+        
+        Dim formatted_string As String
+        
+        Select format
+            Case TIME_FORMAT.T_SECONDS
+                formatted_string = Timestamp_seconds_string
+            Case TIME_FORMAT.T_SECONDS_AS_MILLISECONDS
+                formatted_string = Timestamp_seconds_string + "000"
+            Case TIME_FORMAT.T_MILLISECONDS
+                formatted_string = Timestamp_seconds_string + Timestamp_milliseconds_string
+            Case TIME_FORMAT.T_SECONDS_MILLISECONDS
+                formatted_string = Timestamp_seconds_string + "." + Timestamp_milliseconds_string
+            Case TIME_FORMAT.T_MICROSECONDS
+                formatted_string = Timestamp_seconds_string + Timestamp_microseconds_string
+            Case TIME_FORMAT.T_SECONDS_MICROSECONDS
+                formatted_string = Timestamp_seconds_string + "." + Timestamp_microseconds_string
+            Case Else
+                formatted_string = Timestamp_seconds_string + Timestamp_milliseconds_string
+        End Select
+        Return formatted_string
+    End Function
+    
+End Class

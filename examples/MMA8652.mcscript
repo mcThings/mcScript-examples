@@ -1,4 +1,4 @@
-Enum MMA8652_ACTIVE_ODR As Byte
+﻿Enum MMA8652_ACTIVE_ODR As Byte
     _800HZ = 0x00
     _400HZ = 0x08
     _200HZ = 0x10
@@ -665,13 +665,13 @@ Class MMA8652
     'End Function // ByteToFloatRepresentation
     
     
-    Public Function Standby() As Boolean
+    Private Function Standby() As Boolean
         'set active bit to 0 put accel in standby mode
         Return Write(CTRL_REG1_REG, Read(CTRL_REG1_REG) & ~CTRL_REG1_ACTIVE)
     End Function // Standby
     
     
-    Public Function Activate() As Boolean
+    Private Function Activate() As Boolean
         'set active bit to put accel in active mode
         Return Write(CTRL_REG1_REG, Read(CTRL_REG1_REG) | CTRL_REG1_ACTIVE)
     End Function // Activate
@@ -711,7 +711,7 @@ Class MMA8652
     
     
     Public Function EnableSleepMode(duration As Float) As Boolean
-        Return EnableSleepMode(duration, False)
+        EnableSleepMode(duration, False)
     End Function // EnableSleepMode
     
     

@@ -1,5 +1,5 @@
 ﻿// MMA8652 Library Test - Door Knock and Status (open/close) Sensor
-// Requires TempSensor, MQTT and MMA8652 libraries
+// Requires TempSensor, MQTT, MMA8652 and Timing libraries
 // Publishes status every 1 minute (unless disabled) to mqtt topic "MCThings/" followed by device uid
 // Publishing of data (and LED indication) can be disabled (to save battery) by publishing "True" or "False" to "MCThings/" <device uid>  "/EnablePublish" - enabled by default
 // Publishes data in beacons also (always).
@@ -12,16 +12,20 @@
 // N Waterton 3rd November 2016 V2.1: First Release - tried to reduce random reboots by fiddling with accelerometer timing.
 // N Waterton 6th November 2016 V2.2: First Release - tried to reduce random reboots by fiddling with accelerometer timing (again).
 // N Waterton 13th January 2017 V2.5: First Release - added json payloads for MQTT, various improvements with new firmware
+// N Waterton 16th January 2017 V3.0: Second Release - created new Time library for timing functions
 
 Class Main
     
-    Const Version As String = "V2.5"
+    Const Version As String = "V3.0"
     Shared data As dataType
     Shared Sub_Topic_Publish_Enable As String
     Shared Sub_Topic_Knock_Enable As String
     Shared Knock_Enable As Boolean
     Shared Publish_data As Boolean
     Shared accel As MMA8652
+    Shared timer1 As Timing
+    Shared timer2 As Timing
+    Shared timer3 As Timing
     Shared TimeSinceKnockTriggered As Integer
     Shared TimeSinceDoorClosed As Integer
     Const KnockLockoutPeriod As Integer = 60 //no repeat knocks within 60 seconds if triggered
@@ -51,6 +55,7 @@ Class Main
             MQTT.Publish("Status", "Accel Sensor Offline")
             Knock_Enable = False
         End If
+        timer1 = New Timing()
         Door_Status = ReedSwitch
         PublishDoorStatus() //publish door status on boot
         //MQTT.use_queue = True //enable MQTT queueing - try to work around "stop publishing bug"
@@ -62,119 +67,9 @@ Class Main
         MQTT.Subscribe(Sub_Topic_Knock_Enable)
     End Event
     
-    Public Function getUptimeString() As String
-        //Kludge until DateTime Functions work
-        Dim secs As Integer = Device.Uptime()
-        
-        Dim day As Integer = (secs / 86400).ToInteger
-        secs -= 86400 * day
-        Dim hrs As Integer = (secs / 3600).ToInteger
-        secs -= 3600 * hrs
-        Dim mins As Integer = (secs / 60).ToInteger
-        secs -= 60 * mins
-        
-        Dim uptime_string As String = day.ToString+ ":" + hrs.ToString+ ":" + mins.ToString+ ":" + secs.ToString
-        Return uptime_string
-    End Function
-    
-    Shared MillisecondsTimespan As Integer //Previous value used by GetTimeSpan()
-    Shared TimeTravel As Boolean //Used by GetTimeSpan() to detect setting of RTC
-    Shared offset As Integer //Used by GetTimeSpan() to store current offset
-    
-    Public Function GetTimeSpan() As Integer
-        'replacement for built in function Device.GetTimeSpan()
-        'as you can only use it once per program, but reporting milliseconds, not microseconds.
-        'uses Shared MillisecondsTimespan As Integer
-        'Shared TimeTravel As Boolean
-        'Shared offset As Integer all defined in Class
-        Dim current_timestamp As Integer = 0
-        Dim time_span As Integer = 0
-        
-        Dim time_now As Integer = DateTime.Now().ToInteger()
-        If time_now > DateTime.Create(2017, 1, 1, 0, 0, 0).ToInteger() And Not TimeTravel Then
-            TimeTravel = True
-            offset = 0 - time_now 'reset offset if date time changes (ie RTC gets set)
-            MillisecondsTimespan = Integer.MaxValue 'return bogus big number as timespan is not valid
-        End If
-        
-        If Not Integer.TryConvert(GetTimestamp(3, offset), current_timestamp) Then
-            MQTT.Publish("Status", "GetTimeSpan(): Overflow")
-            current_timestamp = 0
-            MillisecondsTimespan = 0
-        End If
-        
-        time_span = current_timestamp - MillisecondsTimespan
-        MillisecondsTimespan = current_timestamp
-        
-        If time_span <= 0 Then 'can't have negative time span...
-            offset = 0 - time_now 'reset offset if we overflow
-            Return Integer.MaxValue 'return bogus big number as timespan is not valid
-        End If
-        Return time_span
-    End Function
-    
     Public Function GetTimestamp() As String
         'default format (milliseconds format, epoch is unix style)
-        Return GetTimestamp(3, -1)
-    End Function
-    
-    Shared MillisecondsOffset As Integer //Offset used by GetTimeStamp()
-    
-    Public Function GetTimestamp(format As Byte, TimestampOffset As Integer) As String
-        'get unix type timestamp with different formats:
-        '1: return just seconds
-        '2: return seconds as milliseconds (ie ends in 000)
-        '3: return milliseconds (fudge with GetTimeSpan())
-        '4: return seconds.milliseconds (fudge with GetTimeSpan())
-        'add offset 946670400 (seconds) to get epoch as unix format ie since 1st Jan 1970
-        'otherwise epoc is 1st Jan 2000
-        'return as string as we do not have a long data type
-        'Shared MillisecondsOffset As Integer defined in Class
-        If (TimestampOffset = -1) Then
-            TimestampOffset = 946670400
-        End If
-        
-        Dim Timestamp_seconds_string As String = (DateTime.Now().ToInteger() + TimestampOffset).ToString()
-        Dim Timestamp_microseconds As Integer = Device.GetTimeSpan()
-        Dim Timestamp_milliseconds As Integer = ((Timestamp_microseconds % 1000000) / 1000).ToInteger()
-        
-        If Timestamp_microseconds < 0 Then 'account for overflow
-            Timestamp_milliseconds = 0
-            MillisecondsOffset = 0
-        End If
-        
-        Timestamp_milliseconds = (Timestamp_milliseconds + MillisecondsOffset) % 1000
-        MillisecondsOffset = Timestamp_milliseconds
-        
-        Dim Timestamp_milliseconds_string As String = Timestamp_milliseconds.ToString("D3")
-        
-        'If I could figure out what the string formatters are, wouldn't need this
-        '"D3", and "000" don't work.
-        If (Timestamp_milliseconds_string.Length() < 3) Then
-            If (Timestamp_milliseconds_string.Length() = 1) Then
-                Timestamp_milliseconds_string = "00" + Timestamp_milliseconds_string
-            ElseIf (Timestamp_milliseconds_string.Length() = 2) Then
-                Timestamp_milliseconds_string = "0" + Timestamp_milliseconds_string
-            Else 
-                Timestamp_milliseconds_string = "000"
-            End If
-        End If
-        
-        Dim formatted_string As String
-        
-        Select format
-            Case 1
-                formatted_string = Timestamp_seconds_string
-            Case 2
-                formatted_string = Timestamp_seconds_string + "000"
-            Case 3
-                formatted_string = Timestamp_seconds_string + Timestamp_milliseconds_string
-            Case 4
-                formatted_string = Timestamp_seconds_string + "." + Timestamp_milliseconds_string
-            Case Else
-                formatted_string = Timestamp_seconds_string + Timestamp_milliseconds_string
-        End Select
-        Return formatted_string
+        Return Timing.GetTimestamp()
     End Function
     
     Public Sub setLedGreen(on As Boolean)
@@ -255,7 +150,7 @@ Class Main
     End Event
     
     Public Sub DetectDoorKnock()
-        Dim timeSinceLastTransient As Integer = GetTimeSpan()
+        Dim timeSinceLastTransient As Integer = timer1.GetTimeSpan()
         'MQTT.Publish("Test timespan", timeSinceLastTransient)
         'If at least two transients within 1.5 seconds (note sleep time is 2 seconds)
         If timeSinceLastTransient < 1500 And timeSinceLastTransient > 100 Then //debounce door by setting timeSinceLastTransient > 100ms
@@ -355,9 +250,8 @@ Class Main
     End Event
     
     Shared Event Publish() RaiseEvent Every 1 Minutes
-        //PublishDoorStatus() //just in case
         Dim Uptime As Integer = Device.Uptime()
-        Dim UptimeString As String = getUptimeString()
+        Dim UptimeString As String = Timing.getUptimeString()
         Dim BattVolt As Integer = Device.BatteryVoltage()
         Dim TempC As Float = TempSensor.GetTemp
         Door_Status = ReedSwitch
