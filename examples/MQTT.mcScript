@@ -1,4 +1,7 @@
 ﻿// This Class supports Publishing, Subscribing and Beaconing via MQTT and UDP.
+// Nick Waterton 15th January 2017, fixed bug (see below)
+// Updated for mcStudio 906 as it didn't like Shared Event Publish_Queue() testing queue.Count when queue is Nothing
+
 
 Enum dataType As Byte
     NONE = 0
@@ -65,10 +68,12 @@ End Class
 Class MQTT
     //MQTT Publishing class
     Shared use_queue As Boolean //Use publish queueing to prevent module becoming unresponsive (bug)
+    Shared use_delay As Boolean //Use publish delaying to prevent module becoming unresponsive (bug)
     Shared MQTT_priority As Boolean //Publish immediately (bypass queue)
     Shared queue As ListOfObject //FIFO
     Shared timeSincePublish As Integer //publishing timer
     Shared running As Boolean //crude mutex
+    Const MinTimeBetweenPublish As Integer = 3
     
     Shared Sub Publish(topic As String, text As String)
         MQTT.Publish_String(topic, text, QoS.AtMostOnce, False)    
@@ -143,10 +148,17 @@ Class MQTT
         queue.AddRange(list)
     End Sub
     
+    Shared Sub DelayBeforePublishing()
+        If use_delay Then
+            While (Device.Uptime() - timeSincePublish < MinTimeBetweenPublish) 
+                Thread.Sleep(1000000) //min 1s sleep
+            End While
+        End If
+    End Sub
+    
     Shared Sub Publish_String(topic As String, text As String, quality As QoS, exact As Boolean)
         If queue = Nothing Then //initialize on first run
             queue = New ListOfObject()
-            timeSincePublish = 0
         End If
         
         Dim _Message As MQTT_Message = New MQTT_Message(topic, text, quality, exact)
@@ -161,7 +173,7 @@ Class MQTT
             Thread.Sleep(10000) //10ms delay loop while waiting for queue/publish thread to end
         End While
         
-        If (Device.Uptime() - timeSincePublish > 2) And queue.Count= 0 Then //direct publish
+        If (Device.Uptime() - timeSincePublish >= MinTimeBetweenPublish) And queue.Count= 0 Then //direct publish
             MQTT.Publish(_Message)
         Else
             If MQTT_priority Then
@@ -176,22 +188,24 @@ Class MQTT
     
     Shared Sub Publish(msg As MQTT_Message)
         //Actual publishing method
+        MQTT.DelayBeforePublishing() //wait for minnimum time betwen publishing events
         msg.Publish()
         timeSincePublish = Device.Uptime()
     End Sub
     
     Shared Event Publish_Queue() RaiseEvent Every 3 Seconds //limit publishing to once per 3 seconds
-        If queue = Nothing Or (Device.Uptime() - timeSincePublish < 3) Or Not use_queue Then
+        If queue = Nothing Or Not use_queue Then
             Return
         End If
-        running = True //crude mutex
-        If queue.Count> 0 Then
-            Dim msg As MQTT_Message = New MQTT_Message()
-            Dim msg_queue As Object = queue(0).Clone() //make shallow copy of top FIFO message object
-            msg = msg_queue.Cast(MQTT_Message) //cast as MQTT_Message
-            MQTT.Publish(msg) //publish message
-            queue.RemoveAt(0) //remove from top of queue 
+        If queue.Count= 0 Then
+            Return
         End If
+        Dim msg As MQTT_Message = New MQTT_Message()
+        Dim msg_queue As Object = queue(0).Clone() //make shallow copy of top FIFO message object
+        msg = msg_queue.Cast(MQTT_Message) //cast as MQTT_Message
+        MQTT.Publish(msg) //publish message
+        running = True //crude mutex
+        queue.RemoveAt(0) //remove from top of queue 
         running = False
     End Event
     

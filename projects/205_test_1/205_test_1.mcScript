@@ -1,0 +1,430 @@
+﻿// 205 Demo Test
+// Requires TempSensor, MQTT and LIS2DH12 libraries
+// Note this requires the 14th Jan 2017 MQTT library, previous versions cause runtime error.
+// Also needs LIS2DH12 V 4 or above library.
+// Publishes status every 1 minute/10 seconds for testing (unless disabled) to mqtt topic "MCThings/" followed by device uid
+// Publishing of data (and LED indication) can be disabled (to save battery) by publishing "True" or "False" to "MCThings/" <device uid>  "/EnablePublish" - enabled by default
+// Publishes data in beacons also (always).
+// Uses accelerometer detection to sense motion, then publishes location via GPX fix
+// you can set variable Publish_on_Motion to publish GPS location on motion start, or when motion stops
+// NOTE: need unobstructed access to satelites to get valid fix (or you get NaN for lat, long)
+// Obviously just a testbed, you would really need to publish via SigFox - if we had a SigFox network in Canada.
+
+// Indicators -  Led2 = activity and push button settings, Led3 = GPS active
+// Pushbuttons - button 1 = trigger GPS, button 2 short press = toggle GPS on start/end of motion, Long press = toggle publishing on/off
+
+// N Waterton 14th January 2017 V1.0: Beta Release - first cut
+
+Define PinMode Pin3 As DigitalOutput Alias EnableBatteryMeasurement
+Define PinMode Pin8 As AnalogInput Alias BatteryVoltage
+'Define PinMode Pin2 As PwmOutput
+
+Class Main
+    Const Version As String = "V1.0"
+    Shared data As dataType
+    Shared Sub_Topic_Publish_Enable As String
+    Shared Sub_Topic_Publish_on_Motion As String
+    Shared Publish_data As Boolean
+    Shared Publish_on_Motion As Boolean
+    Shared accel As LIS2DH12
+    Shared PublishingLocation As Boolean //used to indicate GPS busy
+    Shared Motion_Detected As Boolean //used to detect start of motion
+    Shared End_Motion_flag As Boolean //used to detect end of motion
+    'GNSS Configuration Constants
+    Const GNSS_TIMEOUT_uS As Integer = 120000000 'GNSS Timeout = 120s
+    Const GNSS_MIN_SAT_COUNT As Integer = 3 'GNSS minimum sats = 3
+    
+    Shared Event Boot()
+        Publish_data = True
+        //Publish_on_Motion = True
+        PublishingLocation = False
+        Sub_Topic_Publish_Enable = "MCThings/" + Device.mcUID().ToString("X8") + "/EnablePublish"
+        Sub_Topic_Publish_on_Motion = "MCThings/" + Device.mcUID().ToString("X8") + "/PublishMotion"
+        MQTT.Subscribe(Sub_Topic_Publish_Enable)
+        MQTT.Subscribe(Sub_Topic_Publish_on_Motion)
+        MQTT.Publish("Status", "Booted: " + Version)
+        accel = New LIS2DH12()
+        If accel.online Then
+            MQTT.Publish("Status", "LIS2DH12TR Sensor Online")
+            If LIS2DH12.VERSION <= 3 Then
+                'set accelerometer to cause interrupt if accelation is > 1.15Gs for longer than 2ms (Z axis)
+                accel.ConfigureShockInterrupt(1.15, 20.0)
+            Else
+                'later versions of library
+                'set up mode, all axis
+                accel.Setup(LIS2DH12.LOW_POWER_MODE, LIS2DH12.DATA_RATE_50HZ, LIS2DH12.SCALE_2G)
+                'set accelerometer to cause interrupt if accelation is > 1.15Gs for longer than 2ms (any axis)
+                accel.ConfigureMotionInterrupt(1.15, 20.0)
+            End If
+        Else
+            MQTT.Publish("Status", "Accel Sensor Offline")
+        End If
+        //MQTT.use_queue = True //enable MQTT queueing - try to work around "stop publishing bug"
+        //MQTT.use_delay = True //enable MQTT delay - try to work around "stop publishing bug"
+    End Event
+    
+    Shared Event NewGateway()
+        MQTT.Subscribe(Sub_Topic_Publish_Enable)
+        MQTT.Subscribe(Sub_Topic_Publish_on_Motion)
+    End Event
+    
+    Public Function getUptimeString() As String
+        //Kludge until DateTime Functions work
+        Dim secs As Integer = Device.Uptime()
+        
+        Dim day As Integer = (secs / 86400).ToInteger
+        secs -= 86400 * day
+        Dim hrs As Integer = (secs / 3600).ToInteger
+        secs -= 3600 * hrs
+        Dim mins As Integer = (secs / 60).ToInteger
+        secs -= 60 * mins
+        
+        Dim uptime_string As String = day.ToString+ ":" + hrs.ToString+ ":" + mins.ToString+ ":" + secs.ToString
+        Return uptime_string
+    End Function
+    
+    Shared MillisecondsTimespan As Integer //Previous value used by GetTimeSpan()
+    Shared TimeTravel As Boolean //Used by GetTimeSpan() to detect setting of RTC
+    Shared offset As Integer //Used by GetTimeSpan() to store current offset
+    
+    Public Function GetTimeSpan() As Integer
+        'replacement for built in function Device.GetTimeSpan()
+        'as you can only use it once per program, but reporting milliseconds, not microseconds.
+        'uses Shared MillisecondsTimespan As Integer
+        'Shared TimeTravel As Boolean
+        'Shared offset As Integer all defined in Class
+        Dim current_timestamp As Integer = 0
+        Dim time_span As Integer = 0
+        
+        Dim time_now As Integer = DateTime.Now().ToInteger()
+        If time_now > DateTime.Create(2017, 1, 1, 0, 0, 0).ToInteger() And Not TimeTravel Then
+            TimeTravel = True
+            offset = 0 - time_now 'reset offset if date time changes (ie RTC gets set)
+            MillisecondsTimespan = Integer.MaxValue 'return bogus big number as timespan is not valid
+        End If
+        
+        If Not Integer.TryConvert(GetTimestamp(3, offset), current_timestamp) Then
+            MQTT.Publish("Status", "GetTimeSpan(): Overflow")
+            current_timestamp = 0
+            MillisecondsTimespan = 0
+        End If
+        
+        time_span = current_timestamp - MillisecondsTimespan
+        MillisecondsTimespan = current_timestamp
+        
+        If time_span <= 0 Then 'can't have negative time span...
+            offset = 0 - time_now 'reset offset if we overflow
+            Return Integer.MaxValue 'return bogus big number as timespan is not valid
+        End If
+        Return time_span
+    End Function
+    
+    Public Function GetTimestamp() As String
+        'default format (milliseconds format, epoch is unix style)
+        Return GetTimestamp(3, -1)
+    End Function
+    
+    Shared MillisecondsOffset As Integer //Offset used by GetTimeStamp()
+    
+    Public Function GetTimestamp(format As Byte, TimestampOffset As Integer) As String
+        'get unix type timestamp with different formats:
+        '1: return just seconds
+        '2: return seconds as milliseconds (ie ends in 000)
+        '3: return milliseconds (fudge with GetTimeSpan())
+        '4: return seconds.milliseconds (fudge with GetTimeSpan())
+        'add offset 946670400 (seconds) to get epoch as unix format ie since 1st Jan 1970
+        'otherwise epoc is 1st Jan 2000
+        'return as string as we do not have a long data type
+        'Shared MillisecondsOffset As Integer defined in Class
+        If (TimestampOffset = -1) Then
+            TimestampOffset = 946670400
+        End If
+        
+        Dim Timestamp_seconds_string As String = (DateTime.Now().ToInteger() + TimestampOffset).ToString()
+        Dim Timestamp_microseconds As Integer = Device.GetTimeSpan()
+        Dim Timestamp_milliseconds As Integer = ((Timestamp_microseconds % 1000000) / 1000).ToInteger()
+        
+        If Timestamp_microseconds < 0 Then 'account for overflow
+            Timestamp_milliseconds = 0
+            MillisecondsOffset = 0
+        End If
+        
+        Timestamp_milliseconds = (Timestamp_milliseconds + MillisecondsOffset) % 1000
+        MillisecondsOffset = Timestamp_milliseconds
+        
+        Dim Timestamp_milliseconds_string As String = Timestamp_milliseconds.ToString("D3")
+        
+        'If I could figure out what the string formatters are, wouldn't need this
+        '"D3", and "000" don't work.
+        If (Timestamp_milliseconds_string.Length() < 3) Then
+            If (Timestamp_milliseconds_string.Length() = 1) Then
+                Timestamp_milliseconds_string = "00" + Timestamp_milliseconds_string
+            ElseIf (Timestamp_milliseconds_string.Length() = 2) Then
+                Timestamp_milliseconds_string = "0" + Timestamp_milliseconds_string
+            Else 
+                Timestamp_milliseconds_string = "000"
+            End If
+        End If
+        
+        Dim formatted_string As String
+        
+        Select format
+            Case 1
+                formatted_string = Timestamp_seconds_string
+            Case 2
+                formatted_string = Timestamp_seconds_string + "000"
+            Case 3
+                formatted_string = Timestamp_seconds_string + Timestamp_milliseconds_string
+            Case 4
+                formatted_string = Timestamp_seconds_string + "." + Timestamp_milliseconds_string
+            Case Else
+                formatted_string = Timestamp_seconds_string + Timestamp_milliseconds_string
+        End Select
+        Return formatted_string
+    End Function
+    
+    Public Sub setLed2(on As Boolean)
+        If Not on Then
+            Led2 = False //turn LED off
+        Else
+            If Not Publish_data Then //dont turn on LED if not publishing (battery saving)
+                Return
+            Else
+                Led2 = True //turn LED on
+            End If
+        End If
+    End Sub
+    
+    Public Sub setLed3(on As Boolean)
+        If Not on Then
+            Led3 = False //turn LED off
+        Else
+            If Not Publish_data Then //dont turn on LED if not publishing (battery saving)
+                Return
+            Else
+                Led3 = True //turn LED on
+            End If
+        End If
+    End Sub
+    
+    '    Public Sub SetPwm(brightness As Byte)
+    '        //PWM test LED3
+    '        Dim pwm1kHz As Pwm
+    '        Dim frequency As Integer = 1000
+    '        Dim percent As Integer = ((brightness.ToInteger* 100) / frequency).ToInteger()
+    '        pwm1kHz = Pwm.Create (frequency) // create PWM with 1000μs period
+    '        pwm1kHz.SetDutyCycle(Pin2, percent) // set PWM to brightness % duty cycle on Pin2
+    '        pwm1kHz.Start() // start PWM
+    '    End Sub
+    
+    Public Sub Led2Flash()
+        Led2 = True
+        Thread.Sleep(3000)
+        Led2 = False
+    End Sub
+    
+    Public Sub Led3Flash()
+        Led3 = True
+        Thread.Sleep(3000)
+        Led3 = False
+    End Sub
+    
+    Shared Event SW1Changed()
+        If SW1 Then
+            //button pressed (actually released - active low) start GPS on button press (for testing)
+            PublishLocation()
+        End If
+    End Event
+    
+    Shared Event SW2Changed()
+        Thread.Sleep(10000) //10ms delay to debounce
+        Thread.ClearHardwareEvent()
+        If Not SW2 Then //(button pressed)
+            Led2Flash()
+            Thread.Sleep(1000000) //wait 1 second
+            If Not SW2 Then //button still pressed = long press
+                Led2Flash()
+                Publish_data = Not Publish_data //toggle publishing
+                If Publish_data Then //double flash Led1 = publishing on
+                    Led2Flash()
+                    Thread.Sleep(50000)
+                    Led2Flash()
+                Else //single flash = publishing off
+                    Led2Flash()
+                End If
+            Else
+                //short press = Switch between GPS on motion, or end of motion (easy to see which is active, so no indication)
+                Publish_on_Motion = Not Publish_on_Motion
+            End If
+            PublishSettings()
+        End If
+    End Event
+    
+    Shared Event AccelerometerInt1()
+        'debounce interrupt
+        Thread.Sleep(100000) //100ms delay to limit interrupts...
+        Thread.ClearHardwareEvent()
+        
+        'Read Int source register to clear interrupt and get source
+        Dim Int1Source As ListOfString = accel.GetInt1Source()
+        If Int1Source.Count> 0 Then 'if we have an interrupt (of any kind, x,y or z)
+            'interrupt generated (can read the interrupt source from ListofString if you want)
+            Led2Flash() //flash LED so that we can see motion deteection.
+            
+            If Publish_on_Motion Then
+                PublishLocation()
+            Else
+                Motion_Detected = True
+                End_Motion_flag = True
+            End If
+        End If 
+    End Event
+    
+    Shared Event MotionCheck() RaiseEvent Every 30 Seconds
+        If Not Motion_Detected And End_Motion_flag Then //no motion in last 30 seconds
+            End_Motion_flag = False //prevent retriggering unless motion occurs
+            PublishLocation()
+        End If
+        Motion_Detected = False
+    End Event
+    
+    Public Sub PublishLocation()
+        //Get Lat Long from GPS
+        If PublishingLocation Then //exit if we have already started GPS
+            Return
+        End If
+        PublishingLocation = True
+        //Led3Flash()
+        setLed3(True) //hard to tell which LED is flashing (as they are all red) so just turn it so so that we can see GPS active.
+        Device.StartGPS(GNSS_TIMEOUT_uS, GNSS_MIN_SAT_COUNT)
+        //make json data
+        Dim jData As Json = New Json
+        jData.Add("time", GetTimestamp())
+        jData.Add("GPSActive", True)
+        MQTT.Publish("Data", jData)
+        Thread.ClearHardwareEvent()
+    End Sub
+    
+    Shared Event LocationDelivery()
+        'Called when GNSS location acquired or timeout occurred
+        PublishingLocation = True
+        'Get latitude
+        Dim Lat As Float = Device.GetLatitude()
+        'Get longitude
+        Dim Lon As Float = Device.GetLongitude()
+        'Get GNSS fix time
+        Dim fixTime As Integer = Device.GetGpsFixTime()
+        
+        Dim jData As Json = New Json
+        jData.Add("time", GetTimestamp())
+        jData.Add("latitude", Lat)
+        jData.Add("longitude", Lon)
+        jData.Add("GPS_fix_time", fixTime)
+        jData.Add("GPSActive", False)
+        MQTT.Publish("Data", jData)
+        
+        //Led3Flash()
+        setLed3(False)
+        PublishingLocation = False
+    End Event
+    
+    Shared Event SubscriptionDelivery()
+        Dim msg As Message = Lplan.GetDelivery()
+        'Dim payload As ListOfByte = msg.PayLoad
+        Dim tmp As Boolean = True 'payload.ExtractFloat(0)
+        Dim tmp_str As String = msg.PayLoad.ToString()
+        Dim topic As String = msg.Topic.ToString()
+        'MQTT.Publish("Status", "Received Message: " + topic + " : " + tmp_str)
+        If topic = Sub_Topic_Publish_Enable Then
+            If Boolean.TryConvert(tmp_str, tmp) Then
+                Publish_data = tmp
+                Dim jData As Json = New Json
+                jData.Add("time", GetTimestamp())
+                jData.Add("PublishEnable", Publish_data)
+                MQTT.Publish("Data", jData)
+            Else
+                MQTT.Publish("Status", "PublishEnable" + tmp_str + " :Boolean Conversion failed")
+            End If
+        ElseIf topic = Sub_Topic_Publish_on_Motion Then
+            If Boolean.TryConvert(tmp_str, tmp) Then
+                Publish_on_Motion = tmp
+                Dim jData As Json = New Json
+                jData.Add("time", GetTimestamp())
+                jData.Add("Publish_on_Motion", Publish_on_Motion)
+                MQTT.Publish("Data", jData)
+            Else
+                MQTT.Publish("Status", "Publish_on_Motion" + tmp_str + " :Boolean Conversion failed")
+            End If  
+        Else
+            MQTT.Publish("Unknown", tmp_str)
+        End If
+    End Event
+    
+    Public Function GetBatteryVoltage() As Float
+        'Enable battery voltage measurement resistor divider
+        EnableBatteryMeasurement = True
+        Thread.Sleep(20000)
+        Dim voltgeMv As Integer = BatteryVoltage
+        EnableBatteryMeasurement = False
+        
+        'Convert measured voltage to actual battery voltage
+        'Battery voltage scaler based on mcDemo205 hardware
+        Dim batVoltage As Float = voltgeMv * 3.546
+        
+        Return batVoltage
+    End Function
+    
+    Public Sub PublishSettings()
+        //make json data
+        Dim jData As Json = New Json
+        jData.Add("time", GetTimestamp())
+        jData.Add("PublishEnable", Publish_data)
+        jData.Add("Publish_on_Motion", Publish_on_Motion)
+        MQTT.Publish("Data", jData)
+    End Sub
+    
+    Shared Event Status() RaiseEvent Every 5 Minutes //publish status of GPS on Motion Detection start/stop, and publish on/off
+        If Publish_data Then //if data publishing is on, do nothing.
+            Return
+        End If
+        PublishSettings()
+    End Event
+    
+    Shared Event Publish() RaiseEvent Every 1 Minutes
+        Dim Uptime As Integer = Device.Uptime()
+        Dim UptimeString As String = getUptimeString()
+        Dim BattVolt As Float = GetBatteryVoltage()
+        Dim TempC As Float = TempSensor.GetTemp
+        If Publish_data Then
+            //make json data
+            Dim jData As Json = New Json
+            jData.Add("time", GetTimestamp())
+            jData.Add("Uptime", Uptime)
+            jData.Add("UptimeString", UptimeString)
+            jData.Add("BatteryVoltage", BattVolt)
+            jData.Add("Temperature", TempC)
+            jData.Add("PublishEnable", Publish_data)
+            jData.Add("Publish_on_Motion", Publish_on_Motion)
+            MQTT.Publish("Data", jData)
+        End If
+        
+        Select data
+            Case dataType.UPTIME
+                If Uptime < Short.MaxValue Then
+                    MQTT.BeaconPublish(dataType.UPTIME, Uptime)
+                End If
+                data = dataType.BATTVOLTAGE
+            Case dataType.BATTVOLTAGE
+                MQTT.BeaconPublish(dataType.BATTVOLTAGE, BattVolt)
+                data = dataType.TEMPERATURE
+            Case dataType.TEMPERATURE
+                MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
+                data = dataType.UPTIME
+            Case Else
+                MQTT.Publish("Status", "OnLine")
+                data = dataType.UPTIME
+        End Select
+        Led2Flash()
+    End Event
+    
+End Class

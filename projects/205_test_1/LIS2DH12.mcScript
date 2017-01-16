@@ -1,0 +1,1375 @@
+﻿'LIS2DH12 accelerometer library
+'Written by jwolf @ mcThings
+'Modified by Nick Waterton 19th Oct 2016
+'AOI is Accelerator Orientation Interrupt (I believe)
+// N Waterton 14th January 2017 V1.4: Beta Release - General mods
+'Ver 4
+
+Class LIS2DH12
+    'Constants
+    Const VERSION As Integer = 4
+    
+    'I2C constants
+    Const LIS2DH12_I2C_ADDR As Byte = 0x19
+    Const I2C_SPEED As Integer = 250000
+    
+    'LIS2DH12 registers
+    Const STATUS_REG_AUX As Byte = 0x07
+    Const OUT_TEMP_L As Byte = 0x0c
+    Const OUT_TEMP_H As Byte = 0x0d
+    Const WHO_AM_I As Byte = 0x0f
+    Const TEMP_CFG As Byte = 0x1f
+    Const CTRL_REG1 As Byte = 0x20
+    Const CTRL_REG2 As Byte = 0x21
+    Const CTRL_REG3 As Byte = 0x22
+    Const CTRL_REG4 As Byte = 0x23
+    Const CTRL_REG5 As Byte = 0x24
+    Const CTRL_REG6 As Byte = 0x25
+    Const REF_DATA_CAP As Byte = 0x26	
+    Const STATUS As Byte = 0x27
+    Const OUT_X_L As Byte = 0x28
+    Const OUT_X_H As Byte = 0x29
+    Const OUT_Y_L As Byte = 0x2a
+    Const OUT_Y_H As Byte = 0x2b
+    Const OUT_Z_L As Byte = 0x2c
+    Const OUT_Z_H As Byte = 0x2d
+    Const FIFO_CTRL As Byte = 0x2e
+    Const FIFO_SRC As Byte = 0x2f
+    Const INT1_CFG As Byte = 0x30
+    Const INT1_SRC As Byte = 0x31
+    Const INT1_THS As Byte = 0x32
+    Const INT1_DURATION As Byte = 0x33
+    Const INT2_CFG As Byte = 0x34
+    Const INT2_SRC As Byte = 0x35
+    Const INT2_THS As Byte = 0x36
+    Const INT2_DURATION As Byte = 0x37
+    Const CLICK_CFG As Byte = 0x38
+    Const CLICK_SRC As Byte = 0x39
+    Const CLICK_THS As Byte = 0x3a
+    Const TIME_LIMIT As Byte = 0x3b
+    Const TIME_LATENCY As Byte = 0x3c
+    Const TIME_WINDOW As Byte = 0x3d
+    Const ACT_THS As Byte = 0x3e
+    Const ACT_DUR As Byte = 0x3f
+    
+    'Temperature constants
+    Const TEMP_ENABLE As Byte = 0xc0
+    Const TOR As Byte = 0x40
+    Const TDA As Byte = 0x04
+    
+    'Data Available constants
+    Const ZYXOR As Byte = 0x80
+    Const ZOR As Byte = 0x40
+    Const YOR As Byte = 0x20
+    Const XOR As Byte = 0x10
+    Const ZYXDA As Byte = 0x08
+    Const ZDA As Byte = 0x04
+    Const YDA As Byte = 0x02
+    Const XDA As Byte = 0x01
+    
+    'Data rate constants
+    Const DATA_RATE_POWER_DOWN As Byte = 0x00
+    Const DATA_RATE_1HZ As Byte = 0x01
+    Const DATA_RATE_10HZ As Byte = 0x02
+    Const DATA_RATE_25HZ As Byte = 0x03
+    Const DATA_RATE_50HZ As Byte = 0x04
+    Const DATA_RATE_100HZ As Byte = 0x05
+    Const DATA_RATE_200HZ As Byte = 0x06
+    Const DATA_RATE_400HZ As Byte = 0x07
+    Const DATA_RATE_1620HZ_LP As Byte = 0x08
+    Const DATA_RATE_1344HZ As Byte = 0x09
+    Const DATA_RATE_MASK As Byte = 0xf0
+    
+    'Scale Constants
+    Const SCALE_2G As Byte = 0x00
+    Const SCALE_4G As Byte = 0x01
+    Const SCALE_8G As Byte = 0x02
+    Const SCALE_16G As Byte = 0x03
+    Const SCALE_MASK As Byte = 0x30
+    Const UNDEFINED As Byte = 0xff
+    
+    'Operating Mode
+    Const LOW_POWER_MODE As Byte = 0x01
+    Const NORMAL_MODE As Byte = 0x02
+    Const HIGH_RESOLUTION_MODE As Byte = 0x03
+    
+    Const LPEN_BIT As Byte = 0x08
+    Const HR_BIT As Byte = 0x08
+    
+    'Block data and Data Endian bits
+    Const BDU_BIT As Byte = 0x80
+    Const BLE_BIT As Byte = 0x40
+    
+    Const CTL5_MASK As Byte = 0xcf
+    Const RST_MASK As Byte = 0x80
+    Const BOOT As Byte = 0x80
+    Const FIFO_EN As Byte = 0x40
+    Const LIR_INT1 As Byte = 0x08
+    Const D4D_INT1 As Byte = 0x04
+    Const LIR_INT2 As Byte = 0x02
+    Const D4D_INT2 As Byte = 0x01
+    
+    Const CTL6_MASK As Byte = 0xfa
+    Const I2_CLICKen As Byte = 0x80
+    Const I2_INT1 As Byte = 0x40
+    Const I2_INT2 As Byte = 0x20
+    Const BOOT_I2 As Byte = 0x10
+    Const P2_ACT As Byte = 0x08
+    Const H_LACTIVE As Byte = 0x02
+    
+    
+    'Interrupt constants
+    Const INT1_ENABLE_MASK As Byte = 0xfe
+    Const INT1_CLICK_BIT As Byte = 0x80
+    Const INT1_AOI1_BIT As Byte = 0x40
+    Const INT1_AOI2_BIT As Byte = 0x20
+    Const INT1_DRDY1_BIT As Byte = 0x10
+    Const INT1_DRDY2_BIT As Byte = 0x08
+    Const INT1_WTM_BIT As Byte = 0x04
+    Const INT1_OVERRUN_BIT As Byte = 0x02
+    Const INT1_PIN As Byte = 0x01
+    Const INT2_PIN As Byte = 0x02
+    
+    
+    Const INT_ACTIVE As Byte = 0x40
+    Const INT_SRC_ZH As Byte = 0x20
+    Const INT_SRC_ZL As Byte = 0x10
+    Const INT_SRC_YH As Byte = 0x08
+    Const INT_SRC_YL As Byte = 0x04
+    Const INT_SRC_XH As Byte = 0x02
+    Const INT_SRC_XL As Byte = 0x01
+    
+    //HP Filter mode
+    Const HP_FILTER_MODE_MASK As Byte = 0xc0
+    Const HP_FILTER_NORMAL_MODE_RESET As Byte = 0x00 '(reset by reading REFERENCE/DATACAPTURE (26h) register)
+    Const HP_FILTER_REF_MODE As Byte = 0x01
+    Const HP_FILTER_NORMAL_MODE As Byte = 0x02
+    Const HP_FILTER_NORMAL_MODE_AUTO As Byte = 0x03 'Autoreset on interrupt event
+    //HP bits mask
+    Const HP_FILTER_BITS_MASK As Byte = 0x0f
+    //HP Filter bypass
+    Const HP_FILTER_BYPASS_BIT As Byte = 0x08
+    //HP Filter for click
+    Const HP_FILTER_CLICK_BIT As Byte = 0x04
+    //HP Filter Enable AOI int 1
+    Const HP_INT_AOI1_BIT As Byte = 0x00
+    //HP Filter Enable AOI int 2
+    Const HP_INT_AOI2_BIT As Byte = 0x01
+    
+    'Click Configuration
+    Const ZD As Byte = 0x20
+    Const ZS As Byte = 0x10
+    Const YD As Byte = 0x08
+    Const YS As Byte = 0x04
+    Const XD As Byte = 0x02
+    Const XS As Byte = 0x01
+    
+    'Click Source
+    Const CLICK_IA As Byte = 0x40
+    Const DClick As Byte = 0x20
+    Const SClick As Byte = 0x10
+    Const Sign As Byte = 0x08
+    Const CLICK_Z As Byte = 0x04
+    Const CLICK_Y As Byte = 0x02
+    Const CLICK_X As Byte = 0x01
+    
+    //limits
+    Const LOW_TRIGGER_THRESHOLD As Float = 1.0
+    Const HIGH_TRIGGER_THRESHOLD As Float = 23.622
+    Const LSB_RESOLUTION_THRESHOLD As Float = 0.186
+    
+    Const LOW_DURATION_MS As Float = 0.0
+    Const HIGH_DURATION_MS As Float = 635.0
+    Const DURATION_RESOLUTION As Float = 5.0
+    
+    'mode scale factor constants
+    Const LP_FACTOR As Float = 16
+    Const NM_FACTOR As Float = 4
+    'HR factor is 1
+    
+    'Axis constants
+    Const X_AXIS As Byte = 0x01
+    Const Y_AXIS As Byte = 0x02
+    Const Z_AXIS As Byte = 0x03
+    
+    'Public variables
+    Public online As Boolean = False
+    
+    'Private variables
+    Private gAccelerometer As I2c
+    //Private gAddr As ListOfByte 
+    //Private gData As ListOfByte 
+    Private gScale As Byte = UNDEFINED
+    Private gOperatingMode As Byte = UNDEFINED
+    Private gDataRate As Byte = UNDEFINED
+    
+    Public Sub New()
+        'Initialize Objects
+        gAccelerometer = I2c.Create(I2C_SPEED, Pin.SCL, Pin.SDA, LIS2DH12_I2C_ADDR)
+        If GetID() = 0x00 Then
+            online = True
+        End If
+    End Sub
+    
+    Public Function map_range(var As Float, old_min As Float, old_max As Float, new_min As Byte, new_max As Byte) As Byte
+        'Convert floats to byte range
+        Dim old_range As Float = old_max - old_min
+        Dim new_range As Float = new_max - new_min
+        Return ((((var - old_min) * new_range) / old_range) + new_min).ToByte
+    End Function
+    
+    Public Function map_range(var As Float, old_min As Byte, old_max As Byte, new_min As Float, new_max As Float) As Float
+        'convert bytes to floats range
+        Dim old_range As Float = old_max - old_min
+        Dim new_range As Float = new_max - new_min
+        Return ((((var - old_min) * new_range) / old_range) + new_min).ToFloat
+    End Function
+    
+    Public Sub Power_Cycle()
+        'Power cycle accelerometer
+        Device.DisableAccelerometer()
+        'delay 5ms
+        Thread.Delay(5000)
+        Device.EnableAccelerometer()
+        'delay 20ms to accelerometer to boot
+        Thread.Delay(20000)
+    End Sub
+    
+    Public Sub reset()
+        Write(CTRL_REG5, RST_MASK)
+        Thread.Delay(20000)
+    End Sub
+    
+    //temperature functions
+    
+    Public Sub EnableTemperature(temp As Boolean)
+        //bits 6,7
+        'Temperature sensor (T) enable. Default value: 00
+        '(00: T disabled; 11: T enabled)
+        Dim enable As Byte = 0
+        If temp Then
+            enable = TEMP_ENABLE
+            SetBlockData(BDU_BIT) //enable block data update (required for temp reading)
+        End If
+        Write(TEMP_CFG, enable) // write bits 6,7
+    End Sub
+    
+    Public Function GetTemperatureEnabled() As Boolean
+        //bits 6,7
+        'Temperature sensor (T) enable. Default value: 00
+        '(00: T disabled; 11: T enabled)
+        If ((Read(TEMP_CFG) & TEMP_ENABLE).ToBoolean) And ((GetBlockData() & BDU_BIT).ToBoolean) Then
+            Return True
+        Else
+            Return False
+        End If
+    End Function
+    
+    Public Sub SetTemperatureBits(temp As Byte)
+        //bits 6,7 - rest not used
+        'Temperature sensor (T) enable. Default value: 00
+        '(00: T disabled; 11: T enabled)
+        Write(TEMP_CFG, temp) // write bits 6,7
+    End Sub
+    
+    Public Function GetTemperatureBits() As Byte
+        //bits 6,7
+        'Temperature sensor (T) enable. Default value: 00
+        '(00: T disabled; 11: T enabled)
+        Return (Read(TEMP_CFG) & TEMP_ENABLE)
+    End Function
+    
+    Public Function GetTemperatureStatus() As Byte
+        'TOR Temperature data overrun. Default value: 0
+        '(0: no overrun has occurred; 1: new temperature data has overwritten the previous data)
+        'TDA Temperature new data available. Default value: 0
+        '(0: new temperature data is not yet available; 1: new temperature data is available)
+        Return (Read(STATUS_REG_AUX) & (TOR | TDA))
+    End Function
+    
+    Public Function NewTemperatureAvailable() As Boolean
+        Return GetTemperatureStatus().ToBoolean
+    End Function
+    
+    Public Function GetTemp() As Byte
+        'Both the OUT_TEMP_L (0Ch), OUT_TEMP_H (0Dh) registers must be read.
+        'Temperature data is stored inside OUT_TEMP_H as two’s complement data in 8-bit format
+        'left-justified.
+        Dim Temp As Byte = Read(OUT_TEMP_L) //dummy read
+        Temp = Read(OUT_TEMP_H)
+        Return Temp
+    End Function
+    
+    //accelerometer functions
+    
+    Public Function GetStatus() As Byte
+        'ZYXOR X-, Y- and Z-axis data overrun. Default value: 0
+        '(0: no overrun has occurred; 1: a new set of data has overwritten the previous set)
+        'ZOR Z-axis data overrun. Default value: 0
+        'YOR Y-axis data overrun. Default value: 0
+        'XOR X-axis data overrun. Default value: 0
+        'ZYXDA X-, Y- and Z-axis new data available. Default value: 0
+        '(0: a new set of data is not yet available; 1: a new set of data is available)
+        'ZDA Z-axis new data available. Default value: 0
+        'YDA Y-axis new data available. Default value: 0
+        'XDA Y-axis new data available. Default value: 0
+        Return Read(STATUS)
+    End Function
+    
+    
+    Public Sub EnableAxis(axis As Byte)
+        //x=0,y=1,z=3 to enable axis
+        Write(CTRL_REG1, (Read(CTRL_REG1) & ~(X_AXIS | Y_AXIS | Z_AXIS)) | axis) // write bits 0,1,2
+    End Sub
+    
+    Public Function GetAxisEnabled() As Byte
+        Return (Read(CTRL_REG1) & (X_AXIS | Y_AXIS | Z_AXIS))
+    End Function
+    
+    Public Sub SetSleepToWakeThreshold(threshold As Float)
+        'A 7-bit unsigned number, with g/LSB. dependant on range setting
+        '1 LSb = 16 mg @ FS = 2 g
+        '1 LSb = 32 mg @ FS = 4 g
+        '1 LSb = 62 mg @ FS = 8 g
+        '1 LSb = 186 mg @ FS = 16 g
+        'below threshold, accelerometer operates at 10Hz/LOW_POWER mode, if threshold is exceeded for
+        'duration (see below), accelerometer resumes the set ODR/mode
+        Dim thresholdByte As Byte = 0
+        If threshold <= 2.0 Then
+            SetScale(SCALE_2G)
+            thresholdByte = map_range(threshold, 0, 2.0, 0, 0x7f)
+        ElseIf threshold <= 4.0 Then
+            SetScale(SCALE_4G)
+            thresholdByte = map_range(threshold, 0, 4.0, 0, 0x7f)
+        ElseIf threshold <= 8.0 Then
+            SetScale(SCALE_8G)
+            thresholdByte = map_range(threshold, 0, 8.0, 0, 0x7f)
+        ElseIf threshold <= 16.0 Then
+            SetScale(SCALE_16G)
+            thresholdByte = map_range(threshold, 0, 16.0, 0, 0x7f)
+        End If
+        If thresholdByte <= 0x7f Then
+            Write(ACT_THS, thresholdByte)
+        End If
+    End Sub
+    
+    Public Sub SetSleepToWakeDuration(duration As Float)
+        'An 8-bit unsigned number, with duration dependant on data rate
+        'Sleep-to-wake, return-to-sleep duration in ms
+        '1 LSb = (8*1[LSb]+1)/ODR
+        'value of 0 @ 50Hz = 1/50 = 20 ms, value of 1 = (8*1 + 1)/50 = 9/50 = 180ms 
+        'our equation becomes duration = ((8*X)+1)*msPerCount, solving for X
+        'X = ((duration/msPerCount) - 1)/8
+        'so if duration is 5000ms, @ 50Hz = ((5000/50)-1)/8 = 249/8 = 31(.125)
+        'below threshold (see above), accelerometer operates at 10Hz/LOW_POWER mode, if threshold
+        'is exceeded, accelerometer resumes the set ODR/mode for duration ms
+        Dim msPerCount As Float = GetmsFromDataRate()
+        Dim count As Byte = (((duration / msPerCount) - 1) / 8).ToByte
+        If count > 0xff Then
+            'need to reduce frequency
+            count = 0xff
+        End If
+        Write(ACT_DUR, count)
+    End Sub
+    
+    Public Sub SetMode(mode As Byte)
+        'Set Operating Mode
+        'modes are high-resolution mode, normal mode and low-power mode.
+        '                                          LP( ctlreg1[3] HR ctlreg4[3]
+        'Low-power mode (8-bit data output)        1              0 
+        'Normal mode    (10-bit data output)       0              0
+        'High-resolution mode (12-bit data output) 0              1
+        
+        If mode = LOW_POWER_MODE Then
+            'Set Low Power 8 bit mode (LPEN_BIT = 1, HR_BIT = 0)
+            Write(CTRL_REG1, (Read(CTRL_REG1) & ~LPEN_BIT) | LPEN_BIT) // clear bit 3, set LPmode
+            Write(CTRL_REG4, (Read(CTRL_REG4) & ~HR_BIT)) // clear bit 3, disable HR mode
+        ElseIf mode = NORMAL_MODE Then
+            'Set Normal 10 bit mode (LPEN_BIT = 0, HR_BIT = 0)
+            Write(CTRL_REG1, (Read(CTRL_REG1) & ~LPEN_BIT)) // clear bit 3, disable LPmode
+            Write(CTRL_REG4, (Read(CTRL_REG4) & ~HR_BIT)) // clear bit 3, disable HR mode
+        ElseIf mode = HIGH_RESOLUTION_MODE Then
+            'Set High Resolution 12 bit mode (LPEN_BIT = 0, HR_BIT = 1)
+            Write(CTRL_REG1, (Read(CTRL_REG1) & ~LPEN_BIT)) // clear bit 3, disable LPmode
+            Write(CTRL_REG4, (Read(CTRL_REG4) & ~HR_BIT) | HR_BIT) // clear bit 3, enable HR mode
+        End If
+    End Sub
+    
+    Public Function GetMode() As Byte
+        'Get Operating Mode
+        'modes are high-resolution mode, normal mode and low-power mode.
+        '                                          LP( ctlreg1[3] HR ctlreg4[3]
+        'Low-power mode (8-bit data output)        1              0 
+        'Normal mode    (10-bit data output)       0              0
+        'High-resolution mode (12-bit data output) 0              1
+        
+        Dim LPbit As Boolean = (Read(CTRL_REG1) & LPEN_BIT).ToBoolean// read bit 3, LPmode
+        Dim HRbit As Boolean = (Read(CTRL_REG4) & HR_BIT).ToBoolean// read bit 3,  HR mode
+        
+        If LPbit Then
+            Return LOW_POWER_MODE
+        End If
+        
+        If HRbit Then
+            Return HIGH_RESOLUTION_MODE
+        End If
+        // otherwise normal mode
+        Return NORMAL_MODE
+    End Function
+    
+    Public Sub SetDataRate(rate As Byte)
+        'Set Data Rate, bits 4,5,6,7
+        'Data rate selection. Default value: 0000
+        '(0000: power-down mode; others: refer to Table 27)
+        Write(CTRL_REG1, (Read(CTRL_REG1) & ~DATA_RATE_MASK) | (rate << 4)) 
+    End Sub
+    
+    Public Function GetDataRate() As Byte
+        'Get Data Rate, bits 4,5,6,7
+        'Data rate selection. Default value: 0000
+        '(0000: power-down mode; others: refer to Table 27)
+        Return ((Read(CTRL_REG1) & DATA_RATE_MASK) >> 4)
+    End Function
+    
+    
+    Public Function GetmsFromDataRate() As Float
+        'Get Data Rate, bits 4,5,6,7
+        'return as ms
+        Dim ms As Float = 0.0
+        Dim mode As Byte = GetMode()
+        Dim dataRate As Byte = GetDataRate()
+        Select dataRate
+            Case DATA_RATE_POWER_DOWN 'no data rate, accel is off!
+                ms = 10000.0
+            Case DATA_RATE_1HZ
+                ms = 1000.0
+            Case DATA_RATE_10HZ
+                ms = 100.0
+            Case DATA_RATE_25HZ
+                ms = 40.0
+            Case DATA_RATE_50HZ
+                ms = 20.0
+            Case DATA_RATE_100HZ
+                ms = 10.0
+            Case DATA_RATE_200HZ
+                ms = 5.0
+            Case DATA_RATE_400HZ
+                ms = 2.5
+            Case DATA_RATE_1620HZ_LP 'low power mode only
+                ms = 0.617
+            Case DATA_RATE_1344HZ 'in low power mode this is 5376 Hz
+                If mode = LOW_POWER_MODE Then
+                    ms = 0.186
+                Else
+                    ms = 0.744
+                End If
+            Case Else
+                ms = 20.0
+        End Select
+        Return ms
+    End Function
+    
+    Public Sub SetScale(scale As Byte)
+        'Set Scale, bits 4,5
+        'Full-scale selection. Default value: 00
+        '(00: ±2g; 01: ±4g; 10: ±8g; 11: ±16g)
+        Write(CTRL_REG4, (Read(CTRL_REG4) & ~SCALE_MASK) | (scale << 4)) 
+    End Sub
+    
+    Public Function GetScale() As Byte
+        'Get Scale, bits 4,5
+        'Full-scale selection. Default value: 00
+        '(00: ±2g; 01: ±4g; 10: ±8g; 11: ±16g)
+        Return ((Read(CTRL_REG4) & SCALE_MASK) >> 4)
+    End Function
+    
+    Public Sub SetBlockData(block As Byte)
+        'BDU Block data update. Default value: 0
+        '(0: continuous update; 1: output registers not updated until MSB and LSB
+        'have been read)
+        Write(CTRL_REG4, (Read(CTRL_REG4) & ~BDU_BIT) | block) 
+    End Sub
+    
+    Public Function GetBlockData() As Byte
+        'Get Scale, bits 4,5
+        'Full-scale selection. Default value: 00
+        '(00: ±2g; 01: ±4g; 10: ±8g; 11: ±16g)
+        Return (Read(CTRL_REG4) & BDU_BIT)
+    End Function
+    
+    Public Sub SetEndian(endian As Byte)
+        'Big/Little Endian data selection. Default value: 0
+        '(0: data LSb at lower address; 1: data MSb at lower address)
+        'The BLE function can be activated only in high-resolution mode
+        Write(CTRL_REG4, (Read(CTRL_REG4) & ~BLE_BIT) | endian)
+    End Sub
+    
+    Public Function GetEndian() As Byte
+        'Big/Little Endian data selection. Default value: 0
+        '(0: data LSb at lower address; 1: data MSb at lower address)
+        'The BLE function can be activated only in high-resolution mode
+        Return (Read(CTRL_REG4) & BLE_BIT)
+    End Function
+    
+    Public Sub SetFilterMode(mode As Byte)
+        'Set High Pass Filter mode, bits 6,7
+        'High-pass filter mode selection. Default value: 00
+        'bit 7, 6
+        '0 0 Normal mode (reset by reading REFERENCE/DATACAPTURE (26h) register)
+        '0 1 Reference signal for filtering
+        '1 0 Normal mode
+        '1 1 Autoreset on interrupt event
+        Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_MODE_MASK) | mode) 
+    End Sub
+    
+    Public Function GetFilterMode() As Byte
+        'Get High Pass Filter mode, bits 6,7
+        'High-pass filter mode selection. Default value: 00
+        'bit 7, 6
+        '0 0 Normal mode (reset by reading REFERENCE/DATACAPTURE (26h) register)
+        '0 1 Reference signal for filtering
+        '1 0 Normal mode
+        '1 1 Autoreset on interrupt event
+        Return (Read(CTRL_REG2) & HP_FILTER_MODE_MASK) 
+    End Function
+    
+    Public Sub SetFilterBypass(mode As Boolean)
+        'Set internal filter bypassed, bit3
+        'Filtered data selection. Default value: 0
+        '(0: internal filter bypassed; 1: data from internal filter sent to output register and FIFO)
+        If mode Then
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_BYPASS_BIT) | HP_FILTER_BYPASS_BIT)
+        Else
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_BYPASS_BIT))
+        End If 
+    End Sub
+    
+    Public Function GetFilterBypass() As Boolean
+        'Get internal filter bypassed, bit3
+        'Filtered data selection. Default value: 0
+        '(0: internal filter bypassed; 1: data from internal filter sent to output register and FIFO)
+        Return (Read(CTRL_REG2) & HP_FILTER_BYPASS_BIT).ToBoolean()
+    End Function
+    
+    Public Sub SetFilterClick(mode As Boolean)
+        'Set High-pass filter enable for CLICK function. bit 2
+        '(0: filter bypassed; 1: filter enabled)
+        If mode Then
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_CLICK_BIT) | HP_FILTER_CLICK_BIT)
+        Else
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_CLICK_BIT))
+        End If
+    End Sub
+    
+    Public Function GetFilterClick() As Boolean
+        'Get High-pass filter enable for CLICK function. bit 2
+        '(0: filter bypassed; 1: filter enabled)
+        Return (Read(CTRL_REG2) & HP_FILTER_CLICK_BIT).ToBoolean()
+    End Function
+    
+    Public Sub SetFilterAOI1(mode As Boolean)
+        'Set High-pass filter enable for AOI function on Interrupt 1 (bit 0)
+        '(0: filter bypassed; 1: filter enabled)
+        If mode Then
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_INT_AOI1_BIT) | HP_INT_AOI1_BIT)
+        Else
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_INT_AOI1_BIT))
+        End If
+    End Sub
+    
+    Public Function GetFilterAOI1() As Boolean
+        'Get High-pass filter enable for AOI function on Interrupt 1 (bit 0)
+        '(0: filter bypassed; 1: filter enabled)
+        Return (Read(CTRL_REG2) & HP_INT_AOI1_BIT).ToBoolean()
+    End Function
+    
+    Public Sub SetFilterAOI2(mode As Boolean)
+        'Set High-pass filter enable for AOI function on Interrupt 2 (bit 1)
+        '(0: filter bypassed; 1: filter enabled)
+        If mode Then
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_INT_AOI2_BIT) | HP_INT_AOI2_BIT)
+        Else
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_INT_AOI2_BIT))
+        End If
+    End Sub
+    
+    Public Function GetFilterAOI2() As Boolean
+        'Get High-pass filter enable for AOI function on Interrupt 2 (bit 1)
+        '(0: filter bypassed; 1: filter enabled)
+        Return (Read(CTRL_REG2) & HP_INT_AOI2_BIT).ToBoolean()
+    End Function
+    
+    Public Sub SetFilterBypassBits(mode As Byte)
+        'Set High Pass Filter bypass bits 0,1,2,3
+        'see bits above
+        Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_BITS_MASK) | mode) 
+    End Sub
+    
+    Public Function GetFilterBypassBits() As Byte
+        'Get High Pass Filter mode, bits 6,7
+        'High-pass filter mode selection. Default value: 00
+        'see bits above
+        Return (Read(CTRL_REG2) & HP_FILTER_BITS_MASK)
+    End Function
+    
+    Public Sub SetInterruptEnable1Bits(mode As Byte)
+        'Set Interrupt 1 Enable bits  bits 1,2,3,4,5,6,7 (bit 0 not used)
+        '(0: disable; 1: enable)
+        'I1_CLICK CLICK interrupt on INT1 pin. Default value 0. bit 7
+        'I1_AOI1 AOI1 interrupt on INT1 pin. Default value 0. bit 6
+        'I1_AOI2 AOI2 interrupt on INT1 pin. Default value 0. bit 5
+        'I1_DRDY1 DRDY1 interrupt on INT1 pin. Default value 0. bit 4
+        'I1_DRDY2 DRDY2 interrupt on INT1 pin. Default value 0. bit 3
+        'I1_WTM FIFO watermark interrupt on INT1 pin. Default value 0. bit 2
+        'I1_OVERRUN FIFO overrun interrupt on INT1 pin. Default value 0. bit 1
+        Write(CTRL_REG3, (Read(CTRL_REG3) & ~INT1_ENABLE_MASK) | mode) 
+    End Sub
+    
+    Public Function GetInterruptEnable1Bits() As Byte
+        'Get Interrupt 1 Enable bits  bits 1,2,3,4,5,6,7
+        'High-pass filter mode selection. Default value: 00
+        Return (Read(CTRL_REG3) & INT1_ENABLE_MASK) 
+    End Function
+    
+    Public Sub SetCTL5Bits(mode As Byte)
+        'Set latching Enable bits  bits 0,1,2,3,6,7 (bits 4,5 not used)
+        '(0: disable; 1: enable)
+        'BOOT Reboot memory content. Default value: 0   bit 7
+        '(0: normal mode; 1: reboot memory content)
+        'FIFO_EN FIFO enable. Default value: 0 bit 6
+        'LIR_INT1 Latch interrupt request on INT1_SRC (31h), with INT1_SRC (31h) register cleared
+        'by reading INT1_SRC (31h) itself. Default value: 0. bit 3
+        '(0: interrupt request not latched; 1: interrupt request latched)
+        'D4D_INT1 4D enable: 4D detection is enabled on INT1 pin when 6D bit on INT1_CFG (30h) is
+        'set to 1. bit 2
+        'LIR_INT2 Latch interrupt request on INT2_SRC (35h) register, with INT2_SRC (35h) register
+        'cleared by reading INT2_SRC (35h) itself. Default value: 0.
+        '(0: interrupt request not latched; 1: interrupt request latched) bit 1
+        'D4D_INT2 4D enable: 4D detection is enabled on INT2 pin when 6D bit on INT2_CFG (34h) is
+        'set to 1. bit 0
+        Write(CTRL_REG5, (Read(CTRL_REG5) & ~CTL5_MASK) | mode) 
+    End Sub
+    
+    Public Function GetCTL5Bits() As Byte
+        'Get latching Enable bits  bits 1,2,3,4,5,6,7
+        'see above
+        Return (Read(CTRL_REG5) & CTL5_MASK) 
+    End Function
+    
+    Public Sub SetCTL6Bits(mode As Byte)
+        'Set Interrupt 2 Enable bits  bits 1,3,4,5,6,7 (bits 0,2 not used)
+        '(0: disabled; 1: enabled)
+        'I2_CLICKen Click interrupt on INT2 pin. Default value: 0 bit 7
+        'I2_INT1 Interrupt 1 function enable on INT2 pin. Default value: 0 bit 6
+        'I2_INT2 Interrupt 2 function enable on INT2 pin. Default value: 0 bit 5
+        'BOOT_I2 Boot on INT2 pin enable. Default value: 0 bit 4
+        'P2_ACT Activity interrupt enable on INT2 pin. Default value: 0. bit 3
+        'H_LACTIVE interrupt active. Default value: 0. bit 1
+        '(0: interrupt active-high; 1: interrupt active-low)
+        Write(CTRL_REG6, (Read(CTRL_REG6) & ~CTL6_MASK) | mode) 
+    End Sub
+    
+    Public Function GetCTL6Bits() As Byte
+        'Get Interrupt 2 Enable bits  bits 1,3,4,5,6,7 (bits 0,2 not used)
+        'see above
+        Return (Read(CTRL_REG6) & CTL6_MASK) 
+    End Function
+    
+    Public Sub SetINT1Threshold(threshold As Float)
+        'A 7-bit unsigned number, with g/LSB. dependant on range setting
+        '1 LSb = 16 mg @ FS = 2 g
+        '1 LSb = 32 mg @ FS = 4 g
+        '1 LSb = 62 mg @ FS = 8 g
+        '1 LSb = 186 mg @ FS = 16 g
+        Dim thresholdByte As Byte = 0
+        If threshold <= 2.0 Then
+            SetScale(SCALE_2G)
+            thresholdByte = map_range(threshold, 0, 2.0, 0, 0x7f)
+        ElseIf threshold <= 4.0 Then
+            SetScale(SCALE_4G)
+            thresholdByte = map_range(threshold, 0, 4.0, 0, 0x7f)
+        ElseIf threshold <= 8.0 Then
+            SetScale(SCALE_8G)
+            thresholdByte = map_range(threshold, 0, 8.0, 0, 0x7f)
+        ElseIf threshold <= 16.0 Then
+            SetScale(SCALE_16G)
+            thresholdByte = map_range(threshold, 0, 16.0, 0, 0x7f)
+        End If
+        If thresholdByte <= 0x7f Then
+            Write(INT1_THS, thresholdByte)
+        End If
+    End Sub
+    
+    Public Sub SetINT2Threshold(threshold As Float)
+        'A 7-bit unsigned number, with g/LSB. dependant on range setting
+        '1 LSb = 16 mg @ FS = 2 g
+        '1 LSb = 32 mg @ FS = 4 g
+        '1 LSb = 62 mg @ FS = 8 g
+        '1 LSb = 186 mg @ FS = 16 g
+        Dim thresholdByte As Byte = 0
+        If threshold <= 2.0 Then
+            SetScale(SCALE_2G)
+            thresholdByte = map_range(threshold, 0, 2.0, 0, 0x7f)
+        ElseIf threshold <= 4.0 Then
+            SetScale(SCALE_4G)
+            thresholdByte = map_range(threshold, 0, 4.0, 0, 0x7f)
+        ElseIf threshold <= 8.0 Then
+            SetScale(SCALE_8G)
+            thresholdByte = map_range(threshold, 0, 8.0, 0, 0x7f)
+        ElseIf threshold <= 16.0 Then
+            SetScale(SCALE_16G)
+            thresholdByte = map_range(threshold, 0, 16.0, 0, 0x7f)
+        End If
+        If thresholdByte <= 0x7f Then
+            Write(INT2_THS, thresholdByte)
+        End If
+    End Sub
+    
+    Public Sub SetINT1Duration(duration As Float)
+        'A 7-bit unsigned number, with duration dependant on data rate
+        'Duration value. Default value: 000 0000
+        '1 LSb = 1/ODR
+        'Set Duration in ms (if set to 0, causes interrupt immediately, once threshold exceeded)
+        'The duration in ms depends on the frequency, ie 50 Hz = 20ms per count, so 100ms = 5 counts
+        Dim msPerCount As Float = GetmsFromDataRate()
+        Dim count As Byte = (duration / msPerCount).ToByte
+        If count > 0x7f Then
+            'need to reduce frequency
+            count = 0x7f
+        End If
+        Write(INT1_DURATION, count)
+    End Sub
+    
+    Public Sub SetINT2Duration(duration As Float)
+        'A 7-bit unsigned number, with duration dependant on data rate
+        'Duration value. Default value: 000 0000
+        '1 LSb = 1/ODR
+        'Set Duration in ms (if set to 0, causes interrupt immediately, once threshold exceeded)
+        'The duration in ms depends on the frequency, ie 50 Hz = 20ms per count, so 100ms = 5 counts
+        Dim msPerCount As Float = GetmsFromDataRate()
+        Dim count As Byte = (duration / msPerCount).ToByte
+        If count > 0x7f Then
+            'need to reduce frequency
+            count = 0x7f
+        End If
+        Write(INT2_DURATION, count)
+    End Sub
+    
+    Public Sub SetINT1ActiveInterrupt(interrupt As Byte)
+        'AOI And/Or combination of interrupt events. Default value: 0. Refer to Table 51 bit 7
+        '6D 6-direction detection function enabled. Default value: 0. Refer to Table 51 bit 6
+        'AOI 6D Interrupt mode
+        ' 0  0 OR combination of interrupt events
+        ' 0  1 6-direction movement recognition
+        ' 1  0 AND combination of interrupt events
+        ' 1  1 6-direction position recognition
+        'Default value: 0 (0: disable interrupt request;1: enable interrupt request) 
+        'ZHIE/ZUPE Enable interrupt generation on Z high event or on direction recognition. bit 5
+        'ZLIE/ZDOWNE Enable interrupt generation on Z low event or on direction recognition. bit 4
+        'YHIE/YUPE Enable interrupt generation on Y high event or on direction recognition. bit 3
+        'YLIE/YDOWNE Enable interrupt generation on Y low event or on direction recognition. bit 2
+        'XHIE/XUPE Enable interrupt generation on X high event or on direction recognition. bit 1
+        'XLIE/XDOWNE Enable interrupt generation on X low event or on direction recognition. bit 0
+        Write(INT1_CFG, interrupt)
+    End Sub
+    
+    Public Function GetINT1ActiveInterrupt() As Byte
+        'bit 7 not used
+        'IA Interrupt active. Default value: 0 bit 6
+        '(0: no interrupt has been generated; 1: one or more interrupts have been generated)
+        'ZH Z high. Default value: 0 bit 5
+        '(0: no interrupt, 1: Z high event has occurred)
+        'ZL Z low. Default value: 0 bit 4
+        '(0: no interrupt; 1: Z low event has occurred)
+        'YH Y high. Default value: 0 bit 3
+        '(0: no interrupt, 1: Y high event has occurred)
+        'YL Y low. Default value: 0 bit 2
+        '(0: no interrupt, 1: Y low event has occurred)
+        'XH X high. Default value: 0 bit 1
+        '(0: no interrupt, 1: X high event has occurred)
+        'XL X low. Default value: 0 bit 0
+        '(0: no interrupt, 1: X low event has occurred)
+        Return Read(INT1_SRC)
+    End Function
+    
+    Public Function GetInt1Source() As ListOfString
+        Dim intSource As Byte = GetINT1ActiveInterrupt()
+        Dim result As ListOfString = New ListOfString
+        
+        If (intSource & INT_ACTIVE) = INT_ACTIVE Then
+            result.Add("active")
+        End If
+        If (intSource & INT_SRC_ZH) = INT_SRC_ZH Then
+            result.Add("z_high")
+        End If
+        If (intSource & INT_SRC_ZL) = INT_SRC_ZL Then
+            result.Add("z_low")
+        End If
+        If (intSource & INT_SRC_YH) = INT_SRC_YH Then
+            result.Add("y_high")
+        End If
+        If (intSource & INT_SRC_YL) = INT_SRC_YL Then
+            result.Add("y_low")
+        End If
+        If (intSource & INT_SRC_XH) = INT_SRC_XH Then
+            result.Add("x_high")
+        End If
+        If (intSource & INT_SRC_XL) = INT_SRC_XL Then
+            result.Add("x_low")
+        End If
+        
+        Return result
+    End Function // GetInt1Source
+    
+    Public Sub SetINT2ActiveInterrupt(interrupt As Byte)
+        'AOI And/Or combination of interrupt events. Default value: 0. Refer to Table 51 bit 7
+        '6D 6-direction detection function enabled. Default value: 0. Refer to Table 51 bit 6
+        'AOI 6D Interrupt mode
+        ' 0  0 OR combination of interrupt events
+        ' 0  1 6-direction movement recognition
+        ' 1  0 AND combination of interrupt events
+        ' 1  1 6-direction position recognition
+        'Default value: 0 (0: disable interrupt request;1: enable interrupt request) 
+        'ZHIE/ZUPE Enable interrupt generation on Z high event or on direction recognition. bit 5
+        'ZLIE/ZDOWNE Enable interrupt generation on Z low event or on direction recognition. bit 4
+        'YHIE/YUPE Enable interrupt generation on Y high event or on direction recognition. bit 3
+        'YLIE/YDOWNE Enable interrupt generation on Y low event or on direction recognition. bit 2
+        'XHIE/XUPE Enable interrupt generation on X high event or on direction recognition. bit 1
+        'XLIE/XDOWNE Enable interrupt generation on X low event or on direction recognition. bit 0
+        Write(INT2_CFG, interrupt)
+    End Sub
+    
+    Public Function GetINT2ActiveInterrupt() As Byte
+        'bit 7 not used
+        'IA Interrupt active. Default value: 0 bit 6
+        '(0: no interrupt has been generated; 1: one or more interrupts have been generated)
+        'ZH Z high. Default value: 0 bit 5
+        '(0: no interrupt, 1: Z high event has occurred)
+        'ZL Z low. Default value: 0 bit 4
+        '(0: no interrupt; 1: Z low event has occurred)
+        'YH Y high. Default value: 0 bit 3
+        '(0: no interrupt, 1: Y high event has occurred)
+        'YL Y low. Default value: 0 bit 2
+        '(0: no interrupt, 1: Y low event has occurred)
+        'XH X high. Default value: 0 bit 1
+        '(0: no interrupt, 1: X high event has occurred)
+        'XL X low. Default value: 0 bit 0
+        '(0: no interrupt, 1: X low event has occurred)
+        Return Read(INT2_SRC)
+    End Function
+    
+    Public Function GetInt2Source() As ListOfString
+        Dim intSource As Byte = GetINT2ActiveInterrupt()
+        Dim result As ListOfString = New ListOfString
+        
+        If (intSource & INT_ACTIVE) = INT_ACTIVE Then
+            result.Add("active")
+        End If
+        If (intSource & INT_SRC_ZH) = INT_SRC_ZH Then
+            result.Add("z_high")
+        End If
+        If (intSource & INT_SRC_ZL) = INT_SRC_ZL Then
+            result.Add("z_low")
+        End If
+        If (intSource & INT_SRC_YH) = INT_SRC_YH Then
+            result.Add("y_high")
+        End If
+        If (intSource & INT_SRC_YL) = INT_SRC_YL Then
+            result.Add("y_low")
+        End If
+        If (intSource & INT_SRC_XH) = INT_SRC_XH Then
+            result.Add("x_high")
+        End If
+        If (intSource & INT_SRC_XL) = INT_SRC_XL Then
+            result.Add("x_low")
+        End If
+        
+        Return result
+    End Function // GetInt2Source
+    
+    Public Function GetRefDataCap() As Byte
+        'Reference value for interrupt generation. Default value: 0
+        Return Read(REF_DATA_CAP)
+    End Function
+    
+    Public Sub SetClickConfig(config As Byte)
+        'bits 0,1,2,3,4,5
+        'ZD Enable interrupt double-click on Z-axis. Default value: 0
+        '(0: disable interrupt request; 1: enable interrupt request on measured accel. value
+        'higher than preset threshold)
+        'ZS Enable interrupt single-click on Z-axis. Default value: 0
+        'YD Enable interrupt double-click on Y-axis. Default value: 0
+        'YS Enable interrupt single-click on Y-axis. Default value: 0
+        'XD Enable interrupt double-click on X-axis. Default value: 0
+        'XS Enable interrupt single-click on X-axis. Default value: 0
+        Write(CLICK_CFG, config)
+    End Sub
+    
+    Public Function GetClickConfig() As Byte
+        'ZD Enable interrupt double-click on Z-axis. Default value: 0
+        '(0: disable interrupt request; 1: enable interrupt request on measured accel. value
+        'higher than preset threshold)
+        'ZS Enable interrupt single-click on Z-axis. Default value: 0
+        'YD Enable interrupt double-click on Y-axis. Default value: 0
+        'YS Enable interrupt single-click on Y-axis. Default value: 0
+        'XD Enable interrupt double-click on X-axis. Default value: 0
+        'XS Enable interrupt single-click on X-axis. Default value: 0
+        Return Read(CLICK_CFG)
+    End Function
+    
+    Public Function GetClickSource() As Byte
+        'IA Interrupt active. Default value: 0 bit 6
+        '(0: no interrupt has been generated; 1: one or more interrupts have been generated)
+        'DClick Double-click enable. Default value: 0 (0: double-click detection disabled,
+        '1: double-click detection enabled) bit 5
+        'SClick Single-click enable. Default value: 0 (0: single-click detection disabled, 1: single-click
+        'detection enabled) bit 4
+        'Sign Click sign. 0: positive detection, 1: negative detection bit 3
+        'Z Z click detection. Default value: 0 bit 2
+        '(0: no interrupt, 1: Z high event has occurred)
+        'Y Y click detection. Default value: 0 bit 1
+        'X X click detection. Default value: 0 bit 0
+        Return Read(CLICK_SRC)
+    End Function
+    
+    Public Function GetIntClickSource() As ListOfString
+        Dim intSource As Byte = GetClickSource()
+        Dim result As ListOfString = New ListOfString
+        
+        If (intSource & CLICK_IA) = CLICK_IA Then
+            result.Add("active")
+        End If
+        If (intSource & DClick) = DClick Then
+            result.Add("double")
+        ElseIf (intSource & SClick) = SClick Then
+            result.Add("single")
+        End If
+        If (intSource & CLICK_Z) = CLICK_Z Then
+            If (intSource & Sign) = Sign Then
+                result.Add("z_axis_positive")
+            Else
+                result.Add("z_axis_negative")
+            End If
+        End If
+        If (intSource & CLICK_Y) = CLICK_Y Then
+            If (intSource & Sign) = Sign Then
+                result.Add("y_axis_positive")
+            Else
+                result.Add("y_axis_negative")
+            End If
+        End If
+        If (intSource & CLICK_X) = CLICK_X Then
+            If (intSource & Sign) = Sign Then
+                result.Add("x_axis_positive")
+            Else
+                result.Add("x_axis_negative")
+            End If
+        End If
+        
+        Return result
+    End Function // GetIntClickSource
+    
+    Public Sub SetClickThreshold(threshold As Float)
+        'A 7-bit unsigned number, with g/LSB. dependant on range setting
+        '1 LSb = 16 mg @ FS = 2 g
+        '1 LSb = 32 mg @ FS = 4 g
+        '1 LSb = 62 mg @ FS = 8 g
+        '1 LSb = 186 mg @ FS = 16 g
+        Dim thresholdByte As Byte = 0
+        If threshold <= 2.0 Then
+            SetScale(SCALE_2G)
+            thresholdByte = map_range(threshold, 0, 2.0, 0, 0x7f)
+        ElseIf threshold <= 4.0 Then
+            SetScale(SCALE_4G)
+            thresholdByte = map_range(threshold, 0, 4.0, 0, 0x7f)
+        ElseIf threshold <= 8.0 Then
+            SetScale(SCALE_8G)
+            thresholdByte = map_range(threshold, 0, 8.0, 0, 0x7f)
+        ElseIf threshold <= 16.0 Then
+            SetScale(SCALE_16G)
+            thresholdByte = map_range(threshold, 0, 16.0, 0, 0x7f)
+        End If
+        If thresholdByte <= 0x7f Then
+            Write(CLICK_THS, thresholdByte)
+        End If
+    End Sub
+    
+    Public Sub SetClickDuration(duration As Float)
+        'A 7-bit unsigned number, with duration dependant on data rate
+        'Duration value. Default value: 000 0000
+        '1 LSb = 1/ODR
+        'Set Duration in ms (if set to 0, causes interrupt immediately, once threshold exceeded)
+        'The duration in ms depends on the frequency, ie 50 Hz = 20ms per count, so 100ms = 5 counts
+        Dim msPerCount As Float = GetmsFromDataRate()
+        Dim count As Byte = (duration / msPerCount).ToByte
+        If count > 0x7f Then
+            'need to reduce frequency
+            count = 0x7f
+        End If
+        Write(TIME_LIMIT, count)
+    End Sub
+    
+    Public Sub SetClickLatency(latency As Byte)
+        'An 8-bit unsigned number
+        Write(TIME_LATENCY, latency)
+    End Sub
+    
+    Public Sub SetClickTimeWindow(window As Byte)
+        'An 8-bit unsigned number
+        Write(TIME_WINDOW, window)
+    End Sub
+    
+    Public Function readAccelData() As ListOfShort
+        Dim rawData As ListOfByte = New ListOfByte // x/y/z accel register data stored here
+        Dim destination As ListOfShort = New ListOfShort
+        rawData = Read(OUT_X_L, 6) // Read the six raw data registers into data array
+        If rawData <> Nothing Then
+            destination.Add((rawData(0) << 8 | rawData(1)) >> 4)
+            destination.Add((rawData(2) << 8 | rawData(3)) >> 4)
+            destination.Add((rawData(4) << 8 | rawData(5)) >> 4)
+        End If
+        Return destination
+    End Function
+    
+    Public Function readAccelDataBytes() As ListOfByte
+        Dim rawData As ListOfByte = New ListOfByte // x/y/z accel register data stored here
+        rawData = Read(OUT_X_L, 6) // Read the six raw data registers into data array
+        Return rawData
+    End Function
+    
+    
+    '    Setup - setup the accelerometer to be able to retreive accelerometer data
+    '    
+    '    operating_mode As Byte - operating mode of the accelerometer (LOW_POWER_MODE, NORMAL_MODE, HIGH_RESOLUTION_MODE)
+    '    data_rate As Byte - data rate for the accelerometer (DATA_RATE_POWER_DOWN, DATA_RATE_1HZ, DATA_RATE_10HZ, DATA_RATE_25HZ, DATA_RATE_50HZ, DATA_RATE_100HZ, DATA_RATE_200HZ, DATA_RATE_400HZ, DATA_RATE_1620HZ_LP, DATA_RATE_1344HZ)
+    '    scale As Byte - scale of the accelerometer (+/-2G, +/-4G, +/-8G, +/-16G (SCALE_2G, SCALE_4G, SCALE_8G, SCALE_16G) 
+    Public Sub Setup(operating_mode As Byte, data_rate As Byte, scale As Byte)
+        'set up values for accelerator
+        'mode = NORMAL, LOW_POWER, HIGH_RESOLUTION
+        'data_rate = DATA_RATE_100HZ etc
+        'scale = SCALE_16G etc
+        
+        'Power cycle accelerometer (odd..)
+        Power_Cycle()
+        
+        EnableAxis(X_AXIS | Y_AXIS | Z_AXIS) 'All axis enabled    
+        SetMode(operating_mode)    
+        SetDataRate(data_rate)     
+        SetScale(scale)	
+        
+        'delay 5ms for the accelerometer to boot (after each register write?)
+        //Thread.Delay(5000)   
+    End Sub
+    
+    '    ConfigureShockInterrupt - configures device to interrupt on shock (currently will interupt on any axis, x,y,z axis configuration can be added later)
+    '    
+    '    Inputs:
+    '    threshold As Float - trigger threshold (1.0 Gs ~ 23.622 Gs), 0.186mg steps 
+    '    Duration As Integer - Duration for threshold to be present to active interrupt (0 ms (immediate) to 635ms), 5ms steps   
+    '    
+    '    Returns:
+    '    result As Boolean- False if function failed, True if function successful (MORE ERROR MESSAGES TO BE ADDED IN THE FUTURE)
+    Public Function ConfigureShockInterrupt(threshold As Float, duration As Float) As Boolean
+        Dim result As Boolean = False
+        Dim thresholdByte As Byte = 0
+        Dim durationByte As Byte = 0
+        
+        If ((threshold >= LOW_TRIGGER_THRESHOLD And threshold <= HIGH_TRIGGER_THRESHOLD)) And ((duration >= LOW_DURATION_MS And duration <= HIGH_DURATION_MS)) Then 
+            
+            'Power cycle accelerometer
+            Power_Cycle()
+            
+            'Set registers
+            'Set to 200Hz, Low Power Mode, All axis enabled
+            //EnableAxis(X_AXIS | Y_AXIS | Z_AXIS) 'All axis enabled    
+            //SetMode(LOW_POWER_MODE)    
+            //SetDataRate(DATA_RATE_200HZ)     
+            //SetScale(SCALE_16G)
+            
+            'modified for door knock sensor
+            'Set to 50Hz, Low Power Mode, Z axis Only, 2G range
+            EnableAxis(Z_AXIS)   
+            SetMode(LOW_POWER_MODE)    
+            SetDataRate(DATA_RATE_50HZ)     
+            SetScale(SCALE_2G)
+            
+            'set sleep mode
+            SetSleepToWakeThreshold(threshold)
+            SetSleepToWakeDuration(5000) //5 seconds in ms
+            
+            //write(CTRL_REG1_REG, 0x6f)
+            'No filter
+            SetFilterMode(HP_FILTER_NORMAL_MODE_RESET) //not sure this is right HP_FILTER_NORMAL_MODE?
+            SetFilterBypassBits(~(HP_FILTER_BYPASS_BIT | HP_FILTER_CLICK_BIT | HP_INT_AOI1_BIT | HP_INT_AOI2_BIT))
+            'SetFilterBypass(false)
+            'SetFilterClick(false)
+            'SetFilterAOI1(false)
+            'SetFilterAOI2(false)
+            //write(CTRL_REG2_REG, 0x00)
+            'AOI interrupt on INT1 Pin
+            SetInterruptEnable1Bits(INT1_AOI1_BIT)
+            //write(CTRL_REG3_REG, 0x40)
+            '8 bit resolution(low power mode), +/- 16G Scale (already done above)
+            'NOTE CTRL_REG4 BDU Block data update. BLE Endian setting not implemented yet
+            //write(CTRL_REG4_REG, 0x30)
+            'Latch Interrupt (cleared by reading INT1_SRC register)
+            SetCTL5Bits(LIR_INT1)
+            //write(CTRL_REG5_REG, 0x08)
+            'Set interrupt as active low on INT1 pin
+            SetCTL6Bits(H_LACTIVE)
+            //write(CTRL_REG6_REG, 0x02)
+            'Set Threshold 0.0 ~ 23.622 Gs
+            SetINT1Threshold(threshold)
+            //write(INT1_THS, thresholdByte)
+            'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+            SetINT1Duration(duration)
+            //write(INT1_DURATION_REG, durationByte)
+            'Configure device to generate interrupt on X, Y, OR Z high event
+            SetINT1ActiveInterrupt(INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH)
+            //write(INT1_CFG, 0x2a)
+            
+            
+            'delay 5ms for the accelerometer to boot
+            Thread.Delay(5000)
+            
+            result = True
+        Else
+            'incorrect range, return error
+            result = False
+        End If
+        
+    End Function
+    
+    '    ConfigureMotionInterrupt - configures device to interrupt on motiob (currently will interupt on any enabled axis)
+    '    NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    '
+    '    Inputs:
+    '    threshold As Float - trigger threshold (1.0 Gs ~ 23.622 Gs), 0.186mg steps 
+    '    Duration As Integer - Duration for threshold to be present to active interrupt (0 ms (immediate) to 635ms), 5ms steps   
+    '    
+    '    Returns:
+    '    result As Boolean- False if function failed, True if function successful (MORE ERROR MESSAGES TO BE ADDED IN THE FUTURE)
+    Public Function ConfigureMotionInterrupt(threshold As Float, duration As Float) As Boolean
+        Dim result As Boolean = False
+        Dim thresholdByte As Byte = 0
+        Dim durationByte As Byte = 0
+        
+        If ((threshold >= LOW_TRIGGER_THRESHOLD And threshold <= HIGH_TRIGGER_THRESHOLD)) And ((duration >= LOW_DURATION_MS And duration <= HIGH_DURATION_MS)) Then 
+            
+            'set sleep mode
+            SetSleepToWakeThreshold(threshold)
+            SetSleepToWakeDuration(5000) //5 seconds in ms
+            
+            'No filter
+            SetFilterMode(HP_FILTER_NORMAL_MODE_RESET) //not sure this is right HP_FILTER_NORMAL_MODE?
+            SetFilterBypassBits(~(HP_FILTER_BYPASS_BIT | HP_FILTER_CLICK_BIT | HP_INT_AOI1_BIT | HP_INT_AOI2_BIT))
+            
+            'AOI interrupt on INT1 Pin
+            SetInterruptEnable1Bits(INT1_AOI1_BIT)
+            'Latch Interrupt (cleared by reading INT1_SRC register)
+            SetCTL5Bits(LIR_INT1)
+            'Set interrupt as active low on INT1 pin
+            SetCTL6Bits(H_LACTIVE)
+            'Set Threshold 0.0 ~ 23.622 Gs
+            SetINT1Threshold(threshold)
+            'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+            SetINT1Duration(duration)
+            'Configure device to generate interrupt on X, Y, OR Z high event
+            SetINT1ActiveInterrupt(INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH)
+            
+            result = True
+        Else
+            'incorrect range, return error
+            result = False
+        End If
+        
+    End Function
+    
+    
+    'GetAccel - returns the acceleration of all axis NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    '
+    'Returns:
+    'returns the acceleration value in Gs As ListOfFloat
+    Public Function GetAccel() As ListOfFloat
+        'Returns the acceleration reading of the specified axis in Gs
+        'Z-axis acceleration data. The value is expressed as two’s complement left-justified.
+        Dim scaleFactor As Float = 0.0
+        Dim XaccelerationReading As Short = 0
+        Dim YaccelerationReading As Short = 0
+        Dim ZaccelerationReading As Short = 0
+        Dim acceleration As ListOfFloat = New ListOfFloat // x/y/z accel output data stored here
+        
+        Dim scale As Byte = GetScale()
+        Dim mode As Byte = GetMode()
+        
+        Select scale
+            Case SCALE_2G
+                scaleFactor = 0.016 '16mg per bit
+            Case SCALE_4G
+                scaleFactor = 0.032 '32mg per bit
+            Case SCALE_8G
+                scaleFactor = 0.064 '64mg per bit
+            Case SCALE_16G
+                scaleFactor = 0.192 '192mg per bit
+        End Select
+        
+        'read acceleration registers
+        Dim Data As ListOfByte = readAccelDataBytes()
+        
+        Select mode
+            Case LOW_POWER_MODE
+                '8 bit signed
+                XaccelerationReading = Data(1)
+                YaccelerationReading = Data(3)
+                ZaccelerationReading = Data(5) 
+                If ((Data(1) & 0x80) = 0x80) Then
+                    'negative number
+                    XaccelerationReading = (Data(1) ^ 0xff) * -1             
+                End If
+                If ((Data(3) & 0x80) = 0x80) Then
+                    'negative number
+                    YaccelerationReading = (Data(3) ^ 0xff) * -1                
+                End If
+                If ((Data(5) & 0x80) = 0x80) Then
+                    'negative number
+                    ZaccelerationReading = (Data(5) ^ 0xff) * -1                 
+                End If
+                
+                'convert to acceleration        
+                acceleration.Add(XaccelerationReading * scaleFactor * LP_FACTOR)
+                acceleration.Add(ZaccelerationReading * scaleFactor * LP_FACTOR)
+                acceleration.Add(ZaccelerationReading * scaleFactor * LP_FACTOR)
+                
+            Case NORMAL_MODE
+                '10 bit signed            
+                XaccelerationReading = ((Data(1) << 8) | Data(0)) >> 6
+                YaccelerationReading = ((Data(3) << 8) | Data(2)) >> 6
+                ZaccelerationReading = ((Data(5) << 8) | Data(4)) >> 6
+                If ((XaccelerationReading & 0x0200) = 0x0200) Then
+                    'negative number
+                    XaccelerationReading = (XaccelerationReading ^ 0x03ff) * -1
+                End If
+                If ((YaccelerationReading & 0x0200) = 0x0200) Then
+                    'negative number
+                    YaccelerationReading = (YaccelerationReading ^ 0x03ff) * -1
+                End If      
+                If ((ZaccelerationReading & 0x0200) = 0x0200) Then
+                    'negative number
+                    ZaccelerationReading = (ZaccelerationReading ^ 0x03ff) * -1
+                End If
+                'convert to acceleration        
+                acceleration.Add(XaccelerationReading * scaleFactor * NM_FACTOR)
+                acceleration.Add(ZaccelerationReading * scaleFactor * NM_FACTOR)
+                acceleration.Add(ZaccelerationReading * scaleFactor * NM_FACTOR)
+                
+            Case HIGH_RESOLUTION_MODE
+                '12 bit signed
+                XaccelerationReading = ((Data(1) << 8) | Data(0)) >> 4
+                YaccelerationReading = ((Data(3) << 8) | Data(2)) >> 4
+                ZaccelerationReading = ((Data(5) << 8) | Data(4)) >> 4
+                If ((XaccelerationReading & 0x0800) = 0x0800) Then
+                    'negative number
+                    XaccelerationReading = (XaccelerationReading ^ 0x0fff) * -1
+                End If
+                If ((YaccelerationReading & 0x0800) = 0x0800) Then
+                    'negative number
+                    YaccelerationReading = (YaccelerationReading ^ 0x0fff) * -1
+                End If
+                If ((ZaccelerationReading & 0x0800) = 0x0800) Then
+                    'negative number
+                    ZaccelerationReading = (ZaccelerationReading ^ 0x0fff) * -1
+                End If
+                'convert to acceleration        
+                acceleration.Add(XaccelerationReading * scaleFactor)
+                acceleration.Add(ZaccelerationReading * scaleFactor)
+                acceleration.Add(ZaccelerationReading * scaleFactor)
+        End Select
+        
+        Return acceleration
+        
+    End Function
+    
+    'Accel - returns the acceleration of the specified axis NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    '
+    'Inputs:
+    'xyz As Byte - axis of acceleration to return (X_AXIS, Y_AXIS, Z_AXIS)
+    '
+    'Returns:
+    'returns the acceleration value in Gs As Float
+    Public Function Accel(xyz As Byte) As Float
+        Dim accelValues As ListOfFloat = GetAccel()
+        If accelValues = Nothing Then
+            Return Nothing
+        End If
+        
+        Select xyz
+            Case X_AXIS
+                Return accelValues(0)
+            Case Y_AXIS
+                Return accelValues(1)
+            Case Z_AXIS
+                Return accelValues(2)
+            Case Else
+                Return Nothing
+        End Select
+        
+    End Function
+    
+    
+    'GetID() - returns the ID of the LISDH12
+    '
+    'Inputs: NONE
+    '
+    'Returns:
+    'returns the ID of the LISDH12, should be 0x33 if device is seen (actually returns 0)
+    Public Function GetID() As Byte
+        Return Read(WHO_AM_I)
+    End Function
+    
+    Private Function Read(address As Byte) As Byte
+        Dim result As Byte = 0
+        Dim value As ListOfByte = Read(address, 1) // Read single byte
+        
+        If value <> Nothing Then
+            result = value(0)
+        End If
+        Return result
+    End Function // Read
+    
+    
+    Private Function Read(address As Byte, length As Byte) As ListOfByte
+        Dim data As ListOfByte = New ListOfByte
+        
+        data.Add(address)
+        gAccelerometer.Write(data, False)
+        
+        Return gAccelerometer.Read(length, True)
+    End Function // Read
+    
+    
+    Private Function Write(address As Byte, value As Byte) As Boolean
+        Dim data As ListOfByte = New ListOfByte
+        
+        data.Add(value)
+        
+        Return Write(address, data) // Write single byte
+    End Function // Write
+    
+    
+    Private Function Write(address As Byte, values As ListOfByte) As Boolean
+        values.InsertAt(0, address)
+        
+        Return gAccelerometer.Write(values, True)
+    End Function // Write
+    
+    'GetVersion() - returns version of this driver
+    '
+    'Inputs: NONE
+    '
+    'Returns:
+    'version As Integer - returns the version of the driver
+    Public Function GetVersion() As Integer
+        Return VERSION
+    End Function
+    
+End Class

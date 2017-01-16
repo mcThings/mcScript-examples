@@ -1,4 +1,7 @@
 ﻿// This Class supports Publishing, Subscribing and Beaconing via MQTT and UDP.
+// Nick Waterton 15th January 2017, fixed bug (see below)
+// Updated for mcStudio 906 as it didn't like Shared Event Publish_Queue() testing queue.Count when queue is Nothing
+
 
 Enum dataType As Byte
     NONE = 0
@@ -14,35 +17,197 @@ Enum dataType As Byte
     MOTION = 10
     DOOR = 11
     KNOCK = 12
+    LOWBATT = 13
 End Enum
 
-Class MQTT
-    Shared mcUIDString As String
+Class MQTT_Message
+    //class to act as MQTT message structure
+    Public __topic As String
+    Public __payload As ListOfByte
+    Public __quality As QoS
+    Public __exact As Boolean
+    Public device_specific As String = "MCThings/" + Device.mcUID().ToString("X8") + "/"
     
-    Shared Sub Publish(topic As String, value As String)
-        If mcUIDString = Nothing Then
-            mcUIDString = Device.mcUID().ToString("X8")
+    Public Sub New()
+    End Sub
+    
+    Public Sub New(_topic As String, _text As String, _quality As QoS, _exact As Boolean)
+        __topic = _topic
+        __payload = New ListOfByte()
+        __payload.Add(_text)
+        __quality = _quality
+        __exact = _exact
+    End Sub
+    
+    Public Function topic() As String
+        If exact() Then
+            Return __topic
+        Else
+            Return (device_specific + __topic)
         End If
-        Dim text_string As ListOfByte = New ListOfByte()
-        text_string.Add(value)
-        Lplan.Publish("MCThings/" + mcUIDString + "/" + topic, text_string)
+    End Function
+    
+    Public Function payload() As ListOfByte
+        Return __payload
+    End Function
+    
+    Public Function quality() As QoS
+        Return __quality
+    End Function
+    
+    Public Function exact() As Boolean
+        Return __exact
+    End Function
+    
+    Public Sub Publish()
+        Lplan.Publish(topic(), __payload, __quality)
+    End Sub
+    
+End Class
+
+Class MQTT
+    //MQTT Publishing class
+    Shared use_queue As Boolean //Use publish queueing to prevent module becoming unresponsive (bug)
+    Shared use_delay As Boolean //Use publish delaying to prevent module becoming unresponsive (bug)
+    Shared MQTT_priority As Boolean //Publish immediately (bypass queue)
+    Shared queue As ListOfObject //FIFO
+    Shared timeSincePublish As Integer //publishing timer
+    Shared running As Boolean //crude mutex
+    Const MinTimeBetweenPublish As Integer = 3
+    
+    Shared Sub Publish(topic As String, text As String)
+        MQTT.Publish_String(topic, text, QoS.AtMostOnce, False)    
     End Sub
     
     Shared Sub Publish(topic As String, value As Object)
         Dim text As String = value.ToString()
-        If mcUIDString = Nothing Then
-            mcUIDString = Device.mcUID().ToString("X8")
-        End If
-        Dim text_string As ListOfByte = New ListOfByte()
-        text_string.Add(text)
-        Lplan.Publish("MCThings/" + mcUIDString + "/" + topic, text_string)
+        MQTT.Publish_String(topic, text, QoS.AtMostOnce, False)
+    End Sub
+    
+    Shared Sub Publish(topic As String, text As String, quality As QoS)
+        MQTT.Publish_String(topic, text, quality, False)
+    End Sub
+    
+    Shared Sub Publish(topic As String, value As Object, quality As QoS)
+        Dim text As String = value.ToString()
+        MQTT.Publish_String(topic, text, quality, False)
     End Sub
     
     Shared Sub Publish_exact(topic As String, text As String)
-        Dim text_String As ListOfByte = New ListOfByte()
-        text_String.Add(text)
-        Lplan.Publish(topic, text_String)
+        MQTT.Publish_String(topic, text, QoS.AtMostOnce, True)
     End Sub
+    
+    Shared Sub Publish_exact(topic As String, text As String, quality As QoS)
+        MQTT.Publish_String(topic, text, quality, True)
+    End Sub
+    
+    Shared Sub Publish_Priority(topic As String, value As Object)
+        Dim text As String = value.ToString()
+        MQTT.Publish_Priority(topic, text, QoS.AtMostOnce)
+    End Sub
+    
+    Shared Sub Publish_Priority(topic As String, value As Object, quality As QoS)
+        Dim text As String = value.ToString()
+        MQTT.Publish_Priority(topic, text, quality)
+    End Sub
+    
+    Shared Sub Publish_Priority(topic As String, text As String)
+        MQTT.Publish_Priority(topic, text, QoS.AtMostOnce)
+    End Sub
+    
+    Shared Sub Publish_Priority(topic As String, text As String, quality As QoS)
+        MQTT_priority = True 
+        MQTT.Publish_String(topic, text, quality, False)
+    End Sub
+    
+    Shared Sub remove(index As Integer) //workaround until list remove is fixed
+        If queue = Nothing Or queue.Count() = 0 Then
+            Return
+        End If
+        Dim list As ListOfObject = New ListOfObject()
+        For i As Integer = 0 To queue.Count- 1
+            If i <> index Then
+                list.Add(queue(i))
+            End If
+        Next
+        queue.Clear()
+        If list.Count> 0 Then
+            queue.AddRange(list)
+        End If
+    End Sub
+    
+    Shared Sub Insert(value As Object) //workaround until list InsertAt is fixed (add to top of list)
+        If queue.Count() = 0 Then
+            queue.Add(value)
+            Return
+        End If
+        Dim list As ListOfObject = New ListOfObject()
+        list.Add(value)
+        list.AddRange(queue)
+        queue.Clear()
+        queue.AddRange(list)
+    End Sub
+    
+    Shared Sub DelayBeforePublishing()
+        If use_delay Then
+            While (Device.Uptime() - timeSincePublish < MinTimeBetweenPublish) 
+                Thread.Sleep(1000000) //min 1s sleep
+            End While
+        End If
+    End Sub
+    
+    Shared Sub Publish_String(topic As String, text As String, quality As QoS, exact As Boolean)
+        If queue = Nothing Then //initialize on first run
+            queue = New ListOfObject()
+        End If
+        
+        Dim _Message As MQTT_Message = New MQTT_Message(topic, text, quality, exact)
+        
+        If Not use_queue Then
+            MQTT.Publish(_Message) //publish direct and return if queuing is not selected
+            MQTT_priority = False
+            Return
+        End If
+        
+        While running
+            Thread.Sleep(10000) //10ms delay loop while waiting for queue/publish thread to end
+        End While
+        
+        If (Device.Uptime() - timeSincePublish >= MinTimeBetweenPublish) And queue.Count= 0 Then //direct publish
+            MQTT.Publish(_Message)
+        Else
+            If MQTT_priority Then
+                'queue.InsertAt(0, _Message) //or add to top of queue FIFO - not working (bug)
+                MQTT.Insert(_Message) //or add to top of queue FIFO 
+            Else
+                queue.Add(_Message) //or add to end of queue FIFO
+            End If 
+        End If
+        MQTT_priority = False
+    End Sub
+    
+    Shared Sub Publish(msg As MQTT_Message)
+        //Actual publishing method
+        MQTT.DelayBeforePublishing() //wait for minnimum time betwen publishing events
+        msg.Publish()
+        timeSincePublish = Device.Uptime()
+    End Sub
+    
+    Shared Event Publish_Queue() RaiseEvent Every 3 Seconds //limit publishing to once per 3 seconds
+        If queue = Nothing Or Not use_queue Then
+            Return
+        End If
+        If queue.Count= 0 Then
+            Return
+        End If
+        Dim msg As MQTT_Message = New MQTT_Message()
+        Dim msg_queue As Object = queue(0).Clone() //make shallow copy of top FIFO message object
+        msg = msg_queue.Cast(MQTT_Message) //cast as MQTT_Message
+        MQTT.Publish(msg) //publish message
+        running = True //crude mutex
+        queue.RemoveAt(0) //remove from top of queue 
+        running = False
+    End Event
     
     //**************************************************************************/
     //*!
@@ -75,12 +240,16 @@ Class MQTT
         beaconData.AddShort(data)
         beaconData.Add(fraction)
         Lplan.SetBeaconData(beaconData)
-        Lplan.SendBeacon()
+        //Lplan.SendBeacon()
         //Lplan.BeaconNow () //does not seem to work
     End Sub
     
     Shared Sub Subscribe(topic As String)
         Lplan.Subscribe(topic)
+    End Sub
+    
+    Shared Sub Subscribe(topic As String, quality As QoS)
+        Lplan.Subscribe(topic, quality)
     End Sub
     
 End Class
