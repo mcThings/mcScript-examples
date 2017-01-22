@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-__version__ = "1.2"
+__version__ = "1.3"
 '''
 Python 2.7
 Quick Program to log mqtt data (normally from mcThings modules, but could work with anything)
 
 Nick Waterton 13th January 2017: V 1.0: Initial Release
 Nick Waterton 15th January 2017: V 1.2: Added Nan Handling. No warning on +/-5s publishing delays, fixed stupid mistakes.
+Nick Waterton 15th January 2017: V 1.3: Added some primitive time zone handling. Added new command line options, and fixed some things...
 '''
 
 #from __future__ import print_function  #if you want python 3 print function
@@ -27,12 +28,16 @@ from logging.handlers import RotatingFileHandler
 
 #----------- Local Routines ------------
 
-def decode_payload(payload):
+def decode_payload(topic,payload):
     '''
     decode timestamp (if any), and format json for pretty printing
     '''
+    global module_timezone
     indent = master_indent + 31 #number of spaces to indent json data
     timestamp = None
+    
+    module_id, tz_offset = module_tz_from_topic(topic)  #get module id and calculates tz offset if there is one
+    
     try:
         #if it's json data, decode it (use OrderedDict to preserve keys order), else return as is...
         json_data = json.loads(payload.replace(":nan", ":NaN"), object_pairs_hook=OrderedDict)
@@ -44,25 +49,48 @@ def decode_payload(payload):
                 timestamp_string = str(json_data['time'])
 
                 if "." in timestamp_string:
-                    timestamp = datetime.datetime.fromtimestamp(float(timestamp_string))
+                    timestamp_value = float(timestamp_string)
                 elif len(timestamp_string) <=10:
-                    timestamp = datetime.datetime.fromtimestamp(int(timestamp_string))
+                    timestamp_value = int(timestamp_string)
                 else:
-                    timestamp = datetime.datetime.fromtimestamp(int(timestamp_string)/1000.0)
-                current_time = datetime.datetime.now()
+                    timestamp_value = int(timestamp_string)/1000.0
+
+                timestamp_value -= tz_offset    #compensate for tz offset
+                timestamp = datetime.datetime.fromtimestamp(timestamp_value) #with local tz offset applied
+                timestamp_str = str(timestamp)
+                if tz_offset:
+                    timestamp_str += " T%dhr" % int(tz_offset/3600) #show auto calculated tz offset
+
+                current_time = datetime.datetime.now()  #with local tz applied
                 publish_delay = (current_time - timestamp).total_seconds()
+                if (timestamp  < current_time):
+                    publish_delay *= -1
+                    
+                delay_hours = int(publish_delay/3600)
                 
-                if publish_delay > 5000:    #date/time set wrong on module
+                if publish_delay > 45000 or publish_delay < -45000:    #date/time set wrong on module (more than 24 hours)
                     publish_delay_string = "Date/time not updated on module\n"
+                    module_timezone.pop(module_id, None)
+                elif publish_delay > 2000 or publish_delay < -2000 :    # (more than 1/2 hour) assume this is some sort of timezone shift
+                    if arg.timezone:
+                        publish_delay_string = "Detected Date/time timezone offset of %d hrs : correcting...\n" % (delay_hours)
+                        if delay_hours < -12 or delay_hours > 12:
+                            log.warn("tz conversion error: %s" % delay_hours)
+                        else:
+                            log.debug("Storing tz offset %d for module %s" %(delay_hours * 3600, module_id))
+                            module_timezone[module_id] = delay_hours * 3600
+                    else:
+                        publish_delay_string = "Detected Date/time timezone offset of %d hrs\n" % (delay_hours)
+                        
                 elif publish_delay > 5 or publish_delay < -5:   #no warning on +/-5 seconds delay
-                    publish_delay_string = "WARNING: Publishing Delay of : %.3f s\n" % publish_delay
+                    publish_delay_string = "WARNING: Publishing Delay of : %.3f s\n" % -publish_delay
                 else:
-                    publish_delay_string = "Publishing Delay of          : %.3f s\n" % publish_delay
+                    publish_delay_string = "Publishing Delay of          : %.3f s\n" % -publish_delay
             except ValueError as e:
-                timestamp = e
+                timestamp_str = e
         json_data_string = "\n".join((indent * " ") + i for i in (publish_delay_string+json.dumps(json_data, indent = 2)).splitlines())
         if timestamp:
-            formatted_data = "Decoded timestamp: %s\n%s" % (timestamp, json_data_string)
+            formatted_data = "Decoded timestamp: %s\n%s" % (timestamp_str, json_data_string)
         else:
             formatted_data = "Decoded JSON: \n%s" % (json_data_string)
             
@@ -73,6 +101,43 @@ def decode_payload(payload):
         formatted_data = payload
 
     return formatted_data
+    
+def module_tz_from_topic(topic):
+    '''
+    extracts the module id from the topic string.
+    assumes the topic is of the format
+    xxx/xxx/xxx/id/item but you can specify the location of the module id using the -m option
+    also gets tz offset (in seconds) from global dict module_timezone (if there is one)
+    returns 0 if there isn't
+    returns "default" for module_id if it can't find one.
+    returns: module_id, tz_offset
+    '''
+    global module_timezone
+    if not module_timezone:
+        module_timezone = {}
+    
+    tz_offset = 0
+    module_id_offset = -1 - arg.module
+    module_id = "default"
+    
+    try:    
+        module_id = topic.split("/")[module_id_offset]
+
+    except IndexError as e:
+        log.error("%s getting module id from %s, position %d" %(e,topic,module_id_offset))
+        arg.module = 1
+        log.warn("changed position to 1 (next to last) - if this is not right, you may have to specify it yourself, using the -m option")
+    
+    try:
+        if module_id in module_timezone.keys():
+            tz_offset = module_timezone[module_id]
+    
+    except Exception as e:
+        log.error("%s getting time zone for module id: %s from topic: %s" %(e,module_id,topic))
+        
+    return module_id, tz_offset
+        
+    
     
 # Define event callbacks
 def on_connect(mosq, obj, rc):
@@ -100,7 +165,7 @@ def on_message(mosq, obj, msg):
     if arg.raw:
         log_string = msg.payload
     else:
-        log_string = decode_payload(msg.payload)
+        log_string = decode_payload(msg.topic,msg.payload)
     log.info("%-{:d}s : %s".format(master_indent) % (msg.topic,log_string))
         
 def on_publish(mosq, obj, mid):
@@ -141,9 +206,11 @@ if __name__ == '__main__':
     parser.add_argument('-P','--password', action='store',type=str, default=None, help='MQTT broker password (default: None)')
     parser.add_argument('-i','--indent', action='store',type=int, default=0, help='Default indentation=auto')
     parser.add_argument('-l','--log', action='store',type=str, default="/home/nick/Scripts/mcThings.log", help='path/name of log file (default: /home/nick/Scripts/mcThings.log)')
-    parser.add_argument('-e','--echo', action='store_true', help='Echo to Console (default: True)', default = True)
+    parser.add_argument('-e','--echo', action='store_false', help='Echo to Console (default: True)', default = True)
     parser.add_argument('-D','--debug', action='store_true', help='debug mode', default = False)
     parser.add_argument('-r','--raw', action='store_true', help='Output raw data, no decoding of json data', default = False)
+    parser.add_argument('-z','--timezone', action='store_false', help='Auto compensate for detected timezone offsets', default = True)
+    parser.add_argument('-m','--module', action='store',type=int, default=1, help='Location in topic of module id (from the end of topic) example: 0 is end, 1 is next to last, default is 1')
     parser.add_argument('--version', action='version', version="%(prog)s ("+__version__+")")
     
     arg = parser.parse_args()
@@ -151,6 +218,7 @@ if __name__ == '__main__':
     #----------- Global Variables -----------
     broker_connected = False
     master_indent = arg.indent
+    module_timezone = {}    #add module timezone offsets here - per module.
     #-------------- Main --------------
      
     if arg.debug:
@@ -176,10 +244,14 @@ if __name__ == '__main__':
         log.info("Showing RAW data")
     else:
         log.info("Showing DECODED data")
+        if arg.timezone:
+            log.info("Auto compensating for timestamp timezone offsets")
+        else:
+            log.info("Showing raw timestamps")
         
     if arg.indent == 0:
         log.info("Using auto indenting")
-    
+        
     #broker = "127.0.0.1"  # mosquitto broker is running on localhost
     broker = arg.broker
     port = arg.port

@@ -1,19 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <ProjectName>DoorSensor</ProjectName>
+  <ProjectName>OrientationTest</ProjectName>
   <DeviceType>mcMod120</DeviceType>
-  <LastDocumentName>..\..\Examples\LIS2DH12.mcScript</LastDocumentName>
+  <LastDocumentName>OrientationTest.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
-      <Name>DoorSensor120</Name>
-      <FileSpec>DoorSensor120.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
-      <BreakPointLineNumbers />
-    </DocumentSetting>
-    <DocumentSetting>
-      <Name>TempSensor</Name>
-      <FileSpec>..\..\Examples\TempSensor.mcScript</FileSpec>
+      <Name>OrientationTest</Name>
+      <FileSpec>OrientationTest.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
@@ -33,8 +26,8 @@
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
-      <Name>Time</Name>
-      <FileSpec>..\..\Examples\Time.mcScript</FileSpec>
+      <Name>[Listing]</Name>
+      <FileSpec>OrientationTest.lst</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />

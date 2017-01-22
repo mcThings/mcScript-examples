@@ -2,12 +2,28 @@
 'Written by jwolf @ mcThings
 'Modified by Nick Waterton 19th Oct 2016
 'AOI is Accelerator Orientation Interrupt (I believe)
+'Huh - no it isn't, it means AndOr Interrupts (possibly Inertial?), ether OR interrupts, or AND them (ie x Or y Or z Or Click ...)
+
+// see Data Sheet at http://www.st.com/resource/en/datasheet/lis2dh12.pdf for details
+
 // N Waterton 14th January 2017 V1.4: Beta Release - General mods
-'Ver 4
+// N Waterton 22nd January 2017 V1.5: First Release - Massive re-write NOTE: Could be breaking changes!
+
+// All functions except FIFO supported.
+// eg: motion, transient, freefall, orientation, click (double or single)
+// Easy convenience funtions for above setups (plus many other config options)
+// support for int 1 or int 2, on pin 1 or 2, latched or unlatched (default is interrupt 1 on pin 1, latched)
+// pin 1 = AccelerometerInt1()
+// pin 2 = AccelerometerInt2()
+// easy read functions for all above modes
+// Temperature sensor is fairly useless, use it at your own risk!
+// NOTE: The on board temp sensor only measures varience against a reference temperature (temp_reference default 25)
+//       which you would have to calibrate in order to get an absolute temperature. Resolution is 1 deg C
+//       as such, you are better off using the module high resolution temperature sensor.
 
 Class LIS2DH12
     'Constants
-    Const VERSION As Integer = 4
+    Const VERSION As Integer = 5
     
     'I2C constants
     Const LIS2DH12_I2C_ADDR As Byte = 0x19
@@ -140,21 +156,30 @@ Class LIS2DH12
     Const INT_SRC_XL As Byte = 0x01
     
     //HP Filter mode
+    Const HP_FILTER_MASK As Byte = 0xff
     Const HP_FILTER_MODE_MASK As Byte = 0xc0
     Const HP_FILTER_NORMAL_MODE_RESET As Byte = 0x00 '(reset by reading REFERENCE/DATACAPTURE (26h) register)
     Const HP_FILTER_REF_MODE As Byte = 0x01
     Const HP_FILTER_NORMAL_MODE As Byte = 0x02
     Const HP_FILTER_NORMAL_MODE_AUTO As Byte = 0x03 'Autoreset on interrupt event
-    //HP bits mask
-    Const HP_FILTER_BITS_MASK As Byte = 0x0f
     //HP Filter bypass
     Const HP_FILTER_BYPASS_BIT As Byte = 0x08
-    //HP Filter for click
-    Const HP_FILTER_CLICK_BIT As Byte = 0x04
-    //HP Filter Enable AOI int 1
-    Const HP_INT_AOI1_BIT As Byte = 0x00
+    //HP Interrupts bits mask
+    Const HP_FILTER_BITS_MASK As Byte = 0x07
+    //HP Filter Enable for click
+    Const HP_INT_CLICK_BIT As Byte = 0x04
     //HP Filter Enable AOI int 2
-    Const HP_INT_AOI2_BIT As Byte = 0x01
+    Const HP_INT_AOI2_BIT As Byte = 0x02
+    //HP Filter Enable AOI int 1
+    Const HP_INT_AOI1_BIT As Byte = 0x01
+    
+    
+    'HP filter Range
+    Const HP_CUTOFF_MASK As Byte = 0x30
+    Const HP_CUTOFF_HIGH As Byte = 0x00
+    Const HP_CUTOFF_MED As Byte = 0x01
+    Const HP_CUTOFF_LOW As Byte = 0x02
+    Const HP_CUTOFF_VERY_LOW As Byte = 0x03
     
     'Click Configuration
     Const ZD As Byte = 0x20
@@ -173,6 +198,11 @@ Class LIS2DH12
     Const CLICK_Y As Byte = 0x02
     Const CLICK_X As Byte = 0x01
     
+    'AOI / 6D configuration
+    Const INT_AOI_MASK As Byte = 0xc0
+    Const INT_AOI_BIT As Byte = 0x80
+    Const INT_6D_BIT As Byte = 0x40
+    
     //limits
     Const LOW_TRIGGER_THRESHOLD As Float = 1.0
     Const HIGH_TRIGGER_THRESHOLD As Float = 23.622
@@ -183,30 +213,32 @@ Class LIS2DH12
     Const DURATION_RESOLUTION As Float = 5.0
     
     'mode scale factor constants
-    Const LP_FACTOR As Float = 16
-    Const NM_FACTOR As Float = 4
-    'HR factor is 1
+    Const LP_FACTOR As Float = 16.0
+    Const NM_FACTOR As Float = 4.0
+    'HR factor is 1.0
     
     'Axis constants
     Const X_AXIS As Byte = 0x01
     Const Y_AXIS As Byte = 0x02
-    Const Z_AXIS As Byte = 0x03
+    Const Z_AXIS As Byte = 0x04
     
     'Public variables
     Public online As Boolean = False
+    Public temp_reference As Integer = 25 'reference temperature for temp sensor
     
     'Private variables
     Private gAccelerometer As I2c
-    //Private gAddr As ListOfByte 
-    //Private gData As ListOfByte 
     Private gScale As Byte = UNDEFINED
     Private gOperatingMode As Byte = UNDEFINED
     Private gDataRate As Byte = UNDEFINED
+    Private gint1cfg As Byte = UNDEFINED
+    Private gint2cfg As Byte = UNDEFINED
     
     Public Sub New()
         'Initialize Objects
         gAccelerometer = I2c.Create(I2C_SPEED, Pin.SCL, Pin.SDA, LIS2DH12_I2C_ADDR)
-        If GetID() = 0x00 Then
+        Power_Cycle() 'turn accelerometer off, then on, and wait for boot.
+        If GetID() = 0x33 Then
             online = True
         End If
     End Sub
@@ -237,19 +269,36 @@ Class LIS2DH12
     
     Public Sub reset()
         Write(CTRL_REG5, RST_MASK)
-        Thread.Delay(20000)
+        Thread.Delay(6000)
+    End Sub
+    
+    Public Sub disable()
+        'set accelerometer to DATA_RATE_POWER_DOWN (minnimum power).
+        'Values read will be the last valid reading, no new updates, or interrupts generated
+        gDataRate = GetDataRate() 'save current data rate
+        SetDataRate(DATA_RATE_POWER_DOWN)
+    End Sub
+    
+    Public Sub enable()
+        If gDataRate = UNDEFINED Or gDataRate = DATA_RATE_POWER_DOWN Then
+            Return
+        End If
+        SetDataRate(gDataRate) 'restore previous data rate
+        Thread.Sleep((GetmsFromDataRate() * 1000).ToInteger)
     End Sub
     
     //temperature functions
     
     Public Sub EnableTemperature(temp As Boolean)
-        //bits 6,7
+        //bits 6,7 - rest not used
         'Temperature sensor (T) enable. Default value: 00
         '(00: T disabled; 11: T enabled)
         Dim enable As Byte = 0
         If temp Then
             enable = TEMP_ENABLE
-            SetBlockData(BDU_BIT) //enable block data update (required for temp reading)
+            SetBlockData(BDU_BIT) //enable block data update (required for temp reading) - but a good idea anyway
+        Else
+            enable = 0x00
         End If
         Write(TEMP_CFG, enable) // write bits 6,7
     End Sub
@@ -291,12 +340,37 @@ Class LIS2DH12
         Return GetTemperatureStatus().ToBoolean
     End Function
     
-    Public Function GetTemp() As Byte
+    Public Function GetTemp() As Integer
         'Both the OUT_TEMP_L (0Ch), OUT_TEMP_H (0Dh) registers must be read.
         'Temperature data is stored inside OUT_TEMP_H as two’s complement data in 8-bit format
         'left-justified.
-        Dim Temp As Byte = Read(OUT_TEMP_L) //dummy read
-        Temp = Read(OUT_TEMP_H)
+        'NOTE: The on board temp sensor only measure varience against a reference temperature (default 25)
+        'which you would have to calibrate in order to get an absolute temperature. Resolution is 1 deg C
+        'as such, you are better off using the module high resolution temperature sensor.
+        
+        Dim Data As ListOfByte = New ListOfByte
+        Data = Read(OUT_TEMP_L, 2)
+        Dim Temp As Integer = temp_reference + Data(1).SignExtend()
+        Return Temp
+    End Function
+    
+    Public Function GetNewTemp() As Integer
+        'Enables temperature (if not already enabled
+        'waits for new reading
+        'returns new reading
+        If GetDataRate() = DATA_RATE_POWER_DOWN Then
+            Return Integer.MinValue 'invalid data
+        End If
+        
+        If Not GetTemperatureEnabled() Then
+            EnableTemperature(True)
+        End If
+        Dim NewTemp As Boolean = NewTemperatureAvailable()
+        While Not NewTemp
+            Thread.Sleep(10000) '10ms sleep
+            NewTemp = NewTemperatureAvailable()
+        End While
+        Dim Temp As Integer = GetTemp()
         Return Temp
     End Function
     
@@ -327,7 +401,7 @@ Class LIS2DH12
     End Function
     
     Public Sub SetSleepToWakeThreshold(threshold As Float)
-        'A 7-bit unsigned number, with g/LSB. dependant on range setting
+        'A 7-bit unsigned number, with g/LSB. dependant on range setting and mode (values are for LOW_POWER_MODE)
         '1 LSb = 16 mg @ FS = 2 g
         '1 LSb = 32 mg @ FS = 4 g
         '1 LSb = 62 mg @ FS = 8 g
@@ -372,6 +446,12 @@ Class LIS2DH12
         Write(ACT_DUR, count)
     End Sub
     
+    Public Sub SetSleepMode(threshold As Float, duration As Float)
+        'convenience function
+        SetSleepToWakeThreshold(threshold)
+        SetSleepToWakeDuration(duration)
+    End Sub
+    
     Public Sub SetMode(mode As Byte)
         'Set Operating Mode
         'modes are high-resolution mode, normal mode and low-power mode.
@@ -379,6 +459,7 @@ Class LIS2DH12
         'Low-power mode (8-bit data output)        1              0 
         'Normal mode    (10-bit data output)       0              0
         'High-resolution mode (12-bit data output) 0              1
+        ' note, minnimum time to transition modes is 1/ODR, for High-resolution this is 7/ODR
         
         If mode = LOW_POWER_MODE Then
             'Set Low Power 8 bit mode (LPEN_BIT = 1, HR_BIT = 0)
@@ -511,6 +592,48 @@ Class LIS2DH12
         Return (Read(CTRL_REG4) & BLE_BIT)
     End Function
     
+    Public Sub SetIntLogic(active As Boolean)
+        'set interupts as active high or low
+        'True = LOW (normal setting)
+        If active Then
+            'Set interrupt as active low
+            SetCTL6Bits(GetCTL6Bits() | H_LACTIVE)
+        Else
+            'Set interrupt as active high (default)
+            SetCTL6Bits(GetCTL6Bits() & ~H_LACTIVE)
+        End If
+    End Sub
+    
+    Public Sub SetIntPinConfig(interrupt As Byte, IntPin As Byte, Latch As Boolean)
+        'set interrupt to pin configuration, latched or not.
+        'this setting is cumulative, ie it adds on to previous confiurations.
+        If interrupt = 1 Then
+            If IntPin = 1 Then
+                'Add AOI1 interrupt on INT1 Pin (INT is the pin AOI is the interrupt)
+                SetPin1Interrupts(GetPin1Interrupts() | INT1_AOI1_BIT)
+            Else
+                'Add AOI1 interrupt on INT2 Pin (I is the pin INT is the Interrupt)
+                SetCTL6Bits(GetCTL6Bits() | I2_INT1)
+            End If
+            If Latch Then
+                'Add Latch Interrupt (Interrupt cleared by reading INT1_SRC register)
+                SetCTL5Bits(GetCTL5Bits() | LIR_INT1)
+            End If
+        Else
+            If IntPin = 1 Then
+                'Add AOI2 interrupt on INT1 Pin
+                SetPin1Interrupts(GetPin1Interrupts() | INT1_AOI2_BIT)
+            Else
+                'Add AOI2 interrupt on INT2 Pin
+                SetCTL6Bits(GetCTL6Bits() | I2_INT2)
+            End If
+            If Latch Then
+                'Add Latch Interrupt (Interrupt cleared by reading INT2_SRC register)
+                SetCTL5Bits(GetCTL5Bits() | LIR_INT2)
+            End If
+        End If
+    End Sub
+    
     Public Sub SetFilterMode(mode As Byte)
         'Set High Pass Filter mode, bits 6,7
         'High-pass filter mode selection. Default value: 00
@@ -519,7 +642,7 @@ Class LIS2DH12
         '0 1 Reference signal for filtering
         '1 0 Normal mode
         '1 1 Autoreset on interrupt event
-        Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_MODE_MASK) | mode) 
+        Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_MODE_MASK) | mode << 6) 
     End Sub
     
     Public Function GetFilterMode() As Byte
@@ -530,17 +653,42 @@ Class LIS2DH12
         '0 1 Reference signal for filtering
         '1 0 Normal mode
         '1 1 Autoreset on interrupt event
-        Return (Read(CTRL_REG2) & HP_FILTER_MODE_MASK) 
+        Return (Read(CTRL_REG2) & HP_FILTER_MODE_MASK >> 6) 
+    End Function
+    
+    Public Sub SetFilterRange(range As Byte)
+        'Set High Pass Filter Frequency Cut Off, bits 4,5
+        'High-pass filter Range selection. Default value: 00
+        'Depends on ODR frequency setting (see table in app note)
+        'bit 4, 5
+        '0 0 High
+        '0 1 Medium
+        '1 0 Low
+        '1 1 Very Low
+        Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_CUTOFF_MASK) | range << 5) 
+    End Sub
+    
+    Public Function GetFilterRange() As Byte
+        'Get High Pass Filter Frequency Cut Off, bits 4,5
+        'High-pass filter Range selection. Default value: 00
+        'Depends on ODR frequency setting (see table in app note)
+        'bit 4, 5
+        '0 0 High
+        '0 1 Medium
+        '1 0 Low
+        '1 1 Very Low
+        Return (Read(CTRL_REG2) & HP_CUTOFF_MASK >> 5) 
     End Function
     
     Public Sub SetFilterBypass(mode As Boolean)
-        'Set internal filter bypassed, bit3
+        'Set internal filter NOT bypassed, bit3
+        'so TRUE is unfiltered data (default), FALSE is data is filtered.
         'Filtered data selection. Default value: 0
         '(0: internal filter bypassed; 1: data from internal filter sent to output register and FIFO)
         If mode Then
-            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_BYPASS_BIT) | HP_FILTER_BYPASS_BIT)
-        Else
             Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_BYPASS_BIT))
+        Else
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_BYPASS_BIT) | HP_FILTER_BYPASS_BIT)
         End If 
     End Sub
     
@@ -555,16 +703,16 @@ Class LIS2DH12
         'Set High-pass filter enable for CLICK function. bit 2
         '(0: filter bypassed; 1: filter enabled)
         If mode Then
-            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_CLICK_BIT) | HP_FILTER_CLICK_BIT)
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_INT_CLICK_BIT) | HP_INT_CLICK_BIT)
         Else
-            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_CLICK_BIT))
+            Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_INT_CLICK_BIT))
         End If
     End Sub
     
     Public Function GetFilterClick() As Boolean
         'Get High-pass filter enable for CLICK function. bit 2
         '(0: filter bypassed; 1: filter enabled)
-        Return (Read(CTRL_REG2) & HP_FILTER_CLICK_BIT).ToBoolean()
+        Return (Read(CTRL_REG2) & HP_INT_CLICK_BIT).ToBoolean()
     End Function
     
     Public Sub SetFilterAOI1(mode As Boolean)
@@ -597,23 +745,10 @@ Class LIS2DH12
         'Get High-pass filter enable for AOI function on Interrupt 2 (bit 1)
         '(0: filter bypassed; 1: filter enabled)
         Return (Read(CTRL_REG2) & HP_INT_AOI2_BIT).ToBoolean()
-    End Function
+    End Function 
     
-    Public Sub SetFilterBypassBits(mode As Byte)
-        'Set High Pass Filter bypass bits 0,1,2,3
-        'see bits above
-        Write(CTRL_REG2, (Read(CTRL_REG2) & ~HP_FILTER_BITS_MASK) | mode) 
-    End Sub
-    
-    Public Function GetFilterBypassBits() As Byte
-        'Get High Pass Filter mode, bits 6,7
-        'High-pass filter mode selection. Default value: 00
-        'see bits above
-        Return (Read(CTRL_REG2) & HP_FILTER_BITS_MASK)
-    End Function
-    
-    Public Sub SetInterruptEnable1Bits(mode As Byte)
-        'Set Interrupt 1 Enable bits  bits 1,2,3,4,5,6,7 (bit 0 not used)
+    Public Sub SetPin1Interrupts(mode As Byte)
+        'Set pin 1 Enable bits  bits 1,2,3,4,5,6,7 (bit 0 not used)
         '(0: disable; 1: enable)
         'I1_CLICK CLICK interrupt on INT1 pin. Default value 0. bit 7
         'I1_AOI1 AOI1 interrupt on INT1 pin. Default value 0. bit 6
@@ -625,10 +760,9 @@ Class LIS2DH12
         Write(CTRL_REG3, (Read(CTRL_REG3) & ~INT1_ENABLE_MASK) | mode) 
     End Sub
     
-    Public Function GetInterruptEnable1Bits() As Byte
-        'Get Interrupt 1 Enable bits  bits 1,2,3,4,5,6,7
-        'High-pass filter mode selection. Default value: 00
-        Return (Read(CTRL_REG3) & INT1_ENABLE_MASK) 
+    Public Function GetPin1Interrupts() As Byte
+        'Get pin 1 Enable bits  bits 1,2,3,4,5,6,7
+        Return Read(CTRL_REG3)  
     End Function
     
     Public Sub SetCTL5Bits(mode As Byte)
@@ -653,11 +787,11 @@ Class LIS2DH12
     Public Function GetCTL5Bits() As Byte
         'Get latching Enable bits  bits 1,2,3,4,5,6,7
         'see above
-        Return (Read(CTRL_REG5) & CTL5_MASK) 
+        Return Read(CTRL_REG5)
     End Function
     
     Public Sub SetCTL6Bits(mode As Byte)
-        'Set Interrupt 2 Enable bits  bits 1,3,4,5,6,7 (bits 0,2 not used)
+        'Set pin 2 Enable bits (and general interupt active level)  bits 1,3,4,5,6,7 (bits 0,2 not used)
         '(0: disabled; 1: enabled)
         'I2_CLICKen Click interrupt on INT2 pin. Default value: 0 bit 7
         'I2_INT1 Interrupt 1 function enable on INT2 pin. Default value: 0 bit 6
@@ -670,13 +804,13 @@ Class LIS2DH12
     End Sub
     
     Public Function GetCTL6Bits() As Byte
-        'Get Interrupt 2 Enable bits  bits 1,3,4,5,6,7 (bits 0,2 not used)
+        'Get pin 2 Enable bits (and misc others)  bits 1,3,4,5,6,7 (bits 0,2 not used)
         'see above
-        Return (Read(CTRL_REG6) & CTL6_MASK) 
+        Return Read(CTRL_REG6)
     End Function
     
     Public Sub SetINT1Threshold(threshold As Float)
-        'A 7-bit unsigned number, with g/LSB. dependant on range setting
+        'A 7-bit unsigned number, with g/LSB. dependant on range setting and mode (values are for LOW_POWER_MODE)
         '1 LSb = 16 mg @ FS = 2 g
         '1 LSb = 32 mg @ FS = 4 g
         '1 LSb = 62 mg @ FS = 8 g
@@ -701,7 +835,7 @@ Class LIS2DH12
     End Sub
     
     Public Sub SetINT2Threshold(threshold As Float)
-        'A 7-bit unsigned number, with g/LSB. dependant on range setting
+        'A 7-bit unsigned number, with g/LSB. dependant on range setting and mode (values are for LOW_POWER_MODE)
         '1 LSb = 16 mg @ FS = 2 g
         '1 LSb = 32 mg @ FS = 4 g
         '1 LSb = 62 mg @ FS = 8 g
@@ -755,6 +889,32 @@ Class LIS2DH12
         Write(INT2_DURATION, count)
     End Sub
     
+    Public Sub SetINT1Active(active As Boolean)
+        'only use this to enable/disable INT1 after it has been configured!
+        If gint1cfg = UNDEFINED Then
+            Return
+        End If
+        If active Then
+            SetINT1ActiveInterrupt(gint1cfg)
+        Else
+            gint1cfg = GetINT1ActiveInterrupt()
+            SetINT1ActiveInterrupt(0x00)
+        End If
+    End Sub
+    
+    Public Sub SetINT2Active(active As Boolean)
+        'only use this to enable/disable INT2 after it has been configured!
+        If gint2cfg = UNDEFINED Then
+            Return
+        End If
+        If active Then
+            SetINT2ActiveInterrupt(gint2cfg)
+        Else
+            gint2cfg = GetINT2ActiveInterrupt()
+            SetINT2ActiveInterrupt(0x00)
+        End If
+    End Sub
+    
     Public Sub SetINT1ActiveInterrupt(interrupt As Byte)
         'AOI And/Or combination of interrupt events. Default value: 0. Refer to Table 51 bit 7
         '6D 6-direction detection function enabled. Default value: 0. Refer to Table 51 bit 6
@@ -792,34 +952,96 @@ Class LIS2DH12
         Return Read(INT1_SRC)
     End Function
     
-    Public Function GetInt1Source() As ListOfString
-        Dim intSource As Byte = GetINT1ActiveInterrupt()
+    Public Function GetIntSource(intSource As Byte, configReg As Byte) As ListOfString
         Dim result As ListOfString = New ListOfString
         
-        If (intSource & INT_ACTIVE) = INT_ACTIVE Then
-            result.Add("active")
-        End If
-        If (intSource & INT_SRC_ZH) = INT_SRC_ZH Then
-            result.Add("z_high")
-        End If
-        If (intSource & INT_SRC_ZL) = INT_SRC_ZL Then
-            result.Add("z_low")
-        End If
-        If (intSource & INT_SRC_YH) = INT_SRC_YH Then
-            result.Add("y_high")
-        End If
-        If (intSource & INT_SRC_YL) = INT_SRC_YL Then
-            result.Add("y_low")
-        End If
-        If (intSource & INT_SRC_XH) = INT_SRC_XH Then
-            result.Add("x_high")
-        End If
-        If (intSource & INT_SRC_XL) = INT_SRC_XL Then
-            result.Add("x_low")
+        If (intSource & INT_ACTIVE) = INT_ACTIVE Then 'only report if active
+            intSource = intSource & Read(configReg) 'only report on enabled interrupts
+            If (intSource & INT_SRC_ZH) = INT_SRC_ZH Then
+                result.Add("z_high")
+            End If
+            If (intSource & INT_SRC_ZL) = INT_SRC_ZL Then
+                result.Add("z_low")
+            End If
+            If (intSource & INT_SRC_YH) = INT_SRC_YH Then
+                result.Add("y_high")
+            End If
+            If (intSource & INT_SRC_YL) = INT_SRC_YL Then
+                result.Add("y_low")
+            End If
+            If (intSource & INT_SRC_XH) = INT_SRC_XH Then
+                result.Add("x_high")
+            End If
+            If (intSource & INT_SRC_XL) = INT_SRC_XL Then
+                result.Add("x_low")
+            End If 
+        Else 
+            result.Add("none")
         End If
         
         Return result
+    End Function // GetIntSource
+    
+    Public Function GetInt1Source() As ListOfString
+        'get active interrupts on INT1
+        Return GetIntSource(GetINT1ActiveInterrupt(), INT1_CFG)
     End Function // GetInt1Source
+    
+    Public Function GetInt1Orientation() As String
+        'special function to decode INT1_SOURCE in 6D/4D mode (only valid for that mode)
+        Return GetIntOrientation(GetINT1ActiveInterrupt(), D4D_INT1)
+    End Function // GetInt1Orientation
+    
+    Public Function GetInt2Orientation() As String
+        'special function to decode INT2_SOURCE in 6D/4D mode (only valid for that mode)
+        Return GetIntOrientation(GetINT2ActiveInterrupt(), D4D_INT2)
+    End Function // GetInt2Orientation
+    
+    Public Function GetIntOrientation(intSource As Byte, interrupt As Byte) As String
+        'special function to decode INTX_SRC in 6D/4D mode (only valid for that mode)
+        Dim result As String
+        Dim orientation As Byte = intSource & ~INT_ACTIVE
+        
+        Dim PLMode As Boolean = False 'is Portrate/landscape mode enabled for interrupt?
+        If ((GetCTL5Bits() & interrupt) = interrupt) Then
+            PLMode = True
+        End If
+        
+        If (intSource & INT_ACTIVE) = INT_ACTIVE Then
+            Select orientation
+                Case INT_SRC_YL
+                    If PLMode Then
+                        result = "portrate_down"
+                    Else
+                        result = "left"
+                    End If
+                Case INT_SRC_YH
+                    If PLMode Then
+                        result = "portrate_up"
+                    Else
+                        result = "right"
+                    End If
+                Case INT_SRC_XL
+                    If PLMode Then
+                        result = "landscape_up"
+                    Else
+                        result = "top"
+                    End If
+                Case INT_SRC_XH
+                    If PLMode Then
+                        result = "landscape_down"
+                    Else
+                        result = "bottom"
+                    End If
+                Case INT_SRC_ZL
+                    result = "down"
+                Case INT_SRC_ZH
+                    result = "up"
+            End Select
+        End If
+        
+        Return result
+    End Function
     
     Public Sub SetINT2ActiveInterrupt(interrupt As Byte)
         'AOI And/Or combination of interrupt events. Default value: 0. Refer to Table 51 bit 7
@@ -859,33 +1081,35 @@ Class LIS2DH12
     End Function
     
     Public Function GetInt2Source() As ListOfString
-        Dim intSource As Byte = GetINT2ActiveInterrupt()
-        Dim result As ListOfString = New ListOfString
-        
-        If (intSource & INT_ACTIVE) = INT_ACTIVE Then
-            result.Add("active")
-        End If
-        If (intSource & INT_SRC_ZH) = INT_SRC_ZH Then
-            result.Add("z_high")
-        End If
-        If (intSource & INT_SRC_ZL) = INT_SRC_ZL Then
-            result.Add("z_low")
-        End If
-        If (intSource & INT_SRC_YH) = INT_SRC_YH Then
-            result.Add("y_high")
-        End If
-        If (intSource & INT_SRC_YL) = INT_SRC_YL Then
-            result.Add("y_low")
-        End If
-        If (intSource & INT_SRC_XH) = INT_SRC_XH Then
-            result.Add("x_high")
-        End If
-        If (intSource & INT_SRC_XL) = INT_SRC_XL Then
-            result.Add("x_low")
-        End If
-        
-        Return result
+        'get active interrupts on INT2
+        Return GetIntSource(GetINT2ActiveInterrupt(), INT2_CFG)
     End Function // GetInt2Source
+    
+    Public Sub SetRefDataCap(threshold As Float)
+        'An 8-bit unsigned number, with g/LSB. dependant on range setting and mode (values are for LOW_POWER_MODE)
+        '1 LSb = 16 mg @ FS = 2 g
+        '1 LSb = 32 mg @ FS = 4 g
+        '1 LSb = 62 mg @ FS = 8 g
+        '1 LSb = 186 mg @ FS = 16 g
+        'offset for interrupt threshold
+        Dim thresholdByte As Byte = 0
+        If threshold <= 2.0 Then
+            SetScale(SCALE_2G)
+            thresholdByte = map_range(threshold, 0, 2.0, 0, 0xff)
+        ElseIf threshold <= 4.0 Then
+            SetScale(SCALE_4G)
+            thresholdByte = map_range(threshold, 0, 4.0, 0, 0xff)
+        ElseIf threshold <= 8.0 Then
+            SetScale(SCALE_8G)
+            thresholdByte = map_range(threshold, 0, 8.0, 0, 0xff)
+        ElseIf threshold <= 16.0 Then
+            SetScale(SCALE_16G)
+            thresholdByte = map_range(threshold, 0, 16.0, 0, 0xff)
+        End If
+        If thresholdByte <= 0xff Then
+            Write(REF_DATA_CAP, thresholdByte)
+        End If
+    End Sub
     
     Public Function GetRefDataCap() As Byte
         'Reference value for interrupt generation. Default value: 0
@@ -970,7 +1194,7 @@ Class LIS2DH12
     End Function // GetIntClickSource
     
     Public Sub SetClickThreshold(threshold As Float)
-        'A 7-bit unsigned number, with g/LSB. dependant on range setting
+        'A 7-bit unsigned number, with g/LSB. dependant on range setting and mode (values are for LOW_POWER_MODE)
         '1 LSb = 16 mg @ FS = 2 g
         '1 LSb = 32 mg @ FS = 4 g
         '1 LSb = 62 mg @ FS = 8 g
@@ -1009,17 +1233,30 @@ Class LIS2DH12
         Write(TIME_LIMIT, count)
     End Sub
     
-    Public Sub SetClickLatency(latency As Byte)
-        'An 8-bit unsigned number
-        Write(TIME_LATENCY, latency)
+    Public Sub SetClickLatency(latency As Float)
+        'An 8-bit unsigned number, with duration dependant on data rate
+        'Duration value. Default value: 000 0000
+        '1 LSb = 1/ODR
+        'Set Duration in ms (if set to 0, causes interrupt immediately, once threshold exceeded)
+        'The duration in ms depends on the frequency, ie 50 Hz = 20ms per count, so 100ms = 5 counts
+        Dim msPerCount As Float = GetmsFromDataRate()
+        Dim count As Byte = (latency / msPerCount).ToByte
+        Write(TIME_LATENCY, count)
     End Sub
     
-    Public Sub SetClickTimeWindow(window As Byte)
-        'An 8-bit unsigned number
-        Write(TIME_WINDOW, window)
+    Public Sub SetClickTimeWindow(window As Float)
+        'An 8-bit unsigned number, with duration dependant on data rate
+        'Duration value. Default value: 000 0000
+        '1 LSb = 1/ODR
+        'Set Duration in ms (if set to 0, causes interrupt immediately, once threshold exceeded)
+        'The duration in ms depends on the frequency, ie 50 Hz = 20ms per count, so 100ms = 5 counts
+        Dim msPerCount As Float = GetmsFromDataRate()
+        Dim count As Byte = (window / msPerCount).ToByte
+        Write(TIME_WINDOW, count)
     End Sub
     
     Public Function readAccelData() As ListOfShort
+        'block read all 6 bytes, starting with X_L
         Dim rawData As ListOfByte = New ListOfByte // x/y/z accel register data stored here
         Dim destination As ListOfShort = New ListOfShort
         rawData = Read(OUT_X_L, 6) // Read the six raw data registers into data array
@@ -1032,10 +1269,97 @@ Class LIS2DH12
     End Function
     
     Public Function readAccelDataBytes() As ListOfByte
+        'block read all 6 bytes, starting with X_L
         Dim rawData As ListOfByte = New ListOfByte // x/y/z accel register data stored here
         rawData = Read(OUT_X_L, 6) // Read the six raw data registers into data array
         Return rawData
     End Function
+    
+    Public Function ReadConfiguration(items As Byte) As Json
+        'reads all control registers and returns formatted json
+        'select block with items = 0,1,2,3 or 4
+        '0= general control registers
+        '1= INT1 settings
+        '2= INT2 settings
+        '3= Click INT settings
+        '4= Misc others
+        
+        Dim reg As String
+        Dim jData As Json = New Json
+        Select items
+            Case 0
+                'control registers (items = 1 or 2)
+                reg = Read(CTRL_REG1).ToString("X2")
+                jData.Add("CTRL_REG1", reg)
+                reg = Read(CTRL_REG2).ToString("X2")
+                jData.Add("CTRL_REG2", reg)
+                reg = Read(CTRL_REG3).ToString("X2")
+                jData.Add("CTRL_REG3", reg)
+                reg = Read(CTRL_REG4).ToString("X2")
+                jData.Add("CTRL_REG4", reg)
+                reg = Read(CTRL_REG5).ToString("X2")
+                jData.Add("CTRL_REG5", reg)
+                reg = Read(CTRL_REG6).ToString("X2")
+                jData.Add("CTRL_REG6", reg)
+                reg = Read(STATUS).ToString("X2")
+                jData.Add("STATUS", reg)
+                
+            Case 1
+                'INT 1
+                reg = Read(INT1_CFG).ToString("X2")
+                jData.Add("INT1_CFG", reg)
+                reg = Read(INT1_THS).ToString("X2")
+                jData.Add("INT1_THS", reg)
+                reg = Read(INT1_DURATION).ToString("X2")
+                jData.Add("INT1_DURATION", reg)
+            Case 2
+                'INT 2
+                reg = Read(INT2_CFG).ToString("X2")
+                jData.Add("INT2_CFG", reg)
+                reg = Read(INT2_THS).ToString("X2")
+                jData.Add("INT2_THS", reg)
+                reg = Read(INT2_DURATION).ToString("X2")
+                jData.Add("INT2_DURATION", reg)
+            Case 3
+                'CLICK
+                reg = Read(CLICK_CFG).ToString("X2")
+                jData.Add("CLICK_CFG", reg)
+                reg = Read(CLICK_THS).ToString("X2")
+                jData.Add("CLICK_THS", reg)
+                reg = Read(TIME_LIMIT).ToString("X2")
+                jData.Add("TIME_LIMIT", reg)
+                reg = Read(TIME_LATENCY).ToString("X2")
+                jData.Add("TIME_LATENCY", reg)
+                reg = Read(TIME_WINDOW).ToString("X2")
+                jData.Add("TIME_WINDOW", reg)
+            Case Else
+                'Misc
+                reg = Read(STATUS_REG_AUX).ToString("X2")
+                jData.Add("STATUS_REG_AUX", reg)
+                reg = Read(WHO_AM_I).ToString("X2")
+                jData.Add("WHO_AM_I", reg)
+                reg = Read(TEMP_CFG).ToString("X2")
+                jData.Add("TEMP_CFG", reg)
+                reg = Read(REF_DATA_CAP).ToString("X2")
+                jData.Add("REF_DATA_CAP", reg)
+                reg = Read(FIFO_CTRL).ToString("X2")
+                jData.Add("FIFO_CTRL", reg)
+                reg = Read(FIFO_SRC).ToString("X2")
+                jData.Add("FIFO_SRC", reg)
+                
+                'Sleep mode settings
+                reg = Read(ACT_THS).ToString("X2")
+                jData.Add("ACT_THS", reg)
+                reg = Read(ACT_DUR).ToString("X2")
+                jData.Add("ACT_DUR", reg)
+        End Select
+        Return jData
+    End Function
+    
+    'See Setup -default enable all axes
+    Public Sub Setup(operating_mode As Byte, data_rate As Byte, scale As Byte)
+        Setup(operating_mode, data_rate, scale, (X_AXIS | Y_AXIS | Z_AXIS))
+    End Sub
     
     
     '    Setup - setup the accelerometer to be able to retreive accelerometer data
@@ -1043,148 +1367,409 @@ Class LIS2DH12
     '    operating_mode As Byte - operating mode of the accelerometer (LOW_POWER_MODE, NORMAL_MODE, HIGH_RESOLUTION_MODE)
     '    data_rate As Byte - data rate for the accelerometer (DATA_RATE_POWER_DOWN, DATA_RATE_1HZ, DATA_RATE_10HZ, DATA_RATE_25HZ, DATA_RATE_50HZ, DATA_RATE_100HZ, DATA_RATE_200HZ, DATA_RATE_400HZ, DATA_RATE_1620HZ_LP, DATA_RATE_1344HZ)
     '    scale As Byte - scale of the accelerometer (+/-2G, +/-4G, +/-8G, +/-16G (SCALE_2G, SCALE_4G, SCALE_8G, SCALE_16G) 
-    Public Sub Setup(operating_mode As Byte, data_rate As Byte, scale As Byte)
+    Public Sub Setup(operating_mode As Byte, data_rate As Byte, scale As Byte, axis As Byte)
         'set up values for accelerator
-        'mode = NORMAL, LOW_POWER, HIGH_RESOLUTION
+        'mode = NORMAL_MODE, LOW_POWER_MODE, HIGH_RESOLUTION_MODE
         'data_rate = DATA_RATE_100HZ etc
         'scale = SCALE_16G etc
+        'axis = X_AXIS | Y_AXIS | Z_AXIS
         
-        'Power cycle accelerometer (odd..)
-        Power_Cycle()
+        'reset accelerometer values to defaults.
+        reset()
         
-        EnableAxis(X_AXIS | Y_AXIS | Z_AXIS) 'All axis enabled    
+        EnableAxis(axis) 'enable selected axes  
         SetMode(operating_mode)    
         SetDataRate(data_rate)     
-        SetScale(scale)	
+        SetScale(scale)
         
-        'delay 5ms for the accelerometer to boot (after each register write?)
-        //Thread.Delay(5000)   
+        'Set interrupt as active low
+        SetIntLogic(True)
+        'Set Block Data Update Mode (ensures data is syncronized)
+        SetBlockData(BDU_BIT)
+        
     End Sub
     
-    '    ConfigureShockInterrupt - configures device to interrupt on shock (currently will interupt on any axis, x,y,z axis configuration can be added later)
+    '    ConfigureShockInterrupt - configures device to interrupt on shock (currently will interupt on any enabled axis, x,y,z)
     '    
     '    Inputs:
-    '    threshold As Float - trigger threshold (1.0 Gs ~ 23.622 Gs), 0.186mg steps 
-    '    Duration As Integer - Duration for threshold to be present to active interrupt (0 ms (immediate) to 635ms), 5ms steps   
+    '    threshold As Float - trigger threshold (0.0 Gs ~ 23.622 Gs), 16mg steps (depends on range and mode)
+    '    Duration As Float - Duration for threshold to be present to active interrupt (0 ms (immediate) to 635ms), steps depends on ODR
     '    
     '    Returns:
     '    result As Boolean- False if function failed, True if function successful (MORE ERROR MESSAGES TO BE ADDED IN THE FUTURE)
+    '    NW 19th Jan 2017 depreciated - repaced by ConfigureTransientInterrupt()
     Public Function ConfigureShockInterrupt(threshold As Float, duration As Float) As Boolean
-        Dim result As Boolean = False
-        Dim thresholdByte As Byte = 0
-        Dim durationByte As Byte = 0
-        
-        If ((threshold >= LOW_TRIGGER_THRESHOLD And threshold <= HIGH_TRIGGER_THRESHOLD)) And ((duration >= LOW_DURATION_MS And duration <= HIGH_DURATION_MS)) Then 
-            
-            'Power cycle accelerometer
-            Power_Cycle()
-            
-            'Set registers
-            'Set to 200Hz, Low Power Mode, All axis enabled
-            //EnableAxis(X_AXIS | Y_AXIS | Z_AXIS) 'All axis enabled    
-            //SetMode(LOW_POWER_MODE)    
-            //SetDataRate(DATA_RATE_200HZ)     
-            //SetScale(SCALE_16G)
-            
-            'modified for door knock sensor
-            'Set to 50Hz, Low Power Mode, Z axis Only, 2G range
-            EnableAxis(Z_AXIS)   
-            SetMode(LOW_POWER_MODE)    
-            SetDataRate(DATA_RATE_50HZ)     
-            SetScale(SCALE_2G)
-            
-            'set sleep mode
-            SetSleepToWakeThreshold(threshold)
-            SetSleepToWakeDuration(5000) //5 seconds in ms
-            
-            //write(CTRL_REG1_REG, 0x6f)
-            'No filter
-            SetFilterMode(HP_FILTER_NORMAL_MODE_RESET) //not sure this is right HP_FILTER_NORMAL_MODE?
-            SetFilterBypassBits(~(HP_FILTER_BYPASS_BIT | HP_FILTER_CLICK_BIT | HP_INT_AOI1_BIT | HP_INT_AOI2_BIT))
-            'SetFilterBypass(false)
-            'SetFilterClick(false)
-            'SetFilterAOI1(false)
-            'SetFilterAOI2(false)
-            //write(CTRL_REG2_REG, 0x00)
-            'AOI interrupt on INT1 Pin
-            SetInterruptEnable1Bits(INT1_AOI1_BIT)
-            //write(CTRL_REG3_REG, 0x40)
-            '8 bit resolution(low power mode), +/- 16G Scale (already done above)
-            'NOTE CTRL_REG4 BDU Block data update. BLE Endian setting not implemented yet
-            //write(CTRL_REG4_REG, 0x30)
-            'Latch Interrupt (cleared by reading INT1_SRC register)
-            SetCTL5Bits(LIR_INT1)
-            //write(CTRL_REG5_REG, 0x08)
-            'Set interrupt as active low on INT1 pin
-            SetCTL6Bits(H_LACTIVE)
-            //write(CTRL_REG6_REG, 0x02)
-            'Set Threshold 0.0 ~ 23.622 Gs
-            SetINT1Threshold(threshold)
-            //write(INT1_THS, thresholdByte)
-            'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
-            SetINT1Duration(duration)
-            //write(INT1_DURATION_REG, durationByte)
-            'Configure device to generate interrupt on X, Y, OR Z high event
-            SetINT1ActiveInterrupt(INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH)
-            //write(INT1_CFG, 0x2a)
-            
-            
-            'delay 5ms for the accelerometer to boot
-            Thread.Delay(5000)
-            
-            result = True
-        Else
-            'incorrect range, return error
-            result = False
-        End If
-        
+        Return ConfigureTransientInterrupt(threshold, duration)    
     End Function
     
-    '    ConfigureMotionInterrupt - configures device to interrupt on motiob (currently will interupt on any enabled axis)
+    Public Function ConfigureMotionInterrupt(threshold As Float, duration As Float) As Boolean
+        Return ConfigureMotionInterrupt(threshold, duration, 1, 1, True)
+    End Function
+    
+    Public Function ConfigureMotionInterrupt(threshold As Float, duration As Float, interrupt As Byte, IntPin As Byte, Latch As Boolean) As Boolean
+        Return ConfigureMotionInterrupt(threshold, duration, interrupt, IntPin, Latch, (INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH))
+    End Function
+    
+    '    ConfigureMotionInterrupt - configures device to interrupt on motion
+    '    NOTE: You can't actually detect motion as such (this is an accelerometer - it detects acceleration - not motion)
+    '          but you could use it to trigger events - ie +ve accel  = motion start -ve accel  = motion stop
+    '          default set up is only to detect +ve accel (INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH | INT_SRC_XL | INT_SRC_YL | INT_SRC_ZL)
+    '          would detect both +ve and -ve accel events.
     '    NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
     '
     '    Inputs:
-    '    threshold As Float - trigger threshold (1.0 Gs ~ 23.622 Gs), 0.186mg steps 
-    '    Duration As Integer - Duration for threshold to be present to active interrupt (0 ms (immediate) to 635ms), 5ms steps   
-    '    
+    '    threshold As Float - trigger threshold (0.0 Gs ~ 23.622 Gs), 16mg steps (depends on range and mode)
+    '    NOTE: This triggers on ABSOLUTE gravity measurements, earths gravity field is 1.0 G (aprox), if you set threshold below 1.0
+    '          the interrupt will continually trigger when X,Y, or Z is horizontal (perpendicular to earths gravity).
+    '          if you want to detect orientation, there is a special configuration for this. ConfigureOrientationInterrupt()
+    '          will give you much better results.
+    '    Duration As Float - Duration for threshold to be present to active interrupt (0 ms (immediate) to 635ms), steps depends on ODR
+    '    interrupt - configure interrupt 1 or 2
+    '    IntPin - output interrupt on pin 1 or 2
+    '    Latch - True = Latch interrupt until INTX_SRC is read (where X is 1 or 2, whichever was configured)
+    '    enabledInterrupts - axes you want to generate interrupts on eg INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH or just INT_SRC_ZH (or INT_SRC_ZL if you want to detect passing below a threshold) 
+    
     '    Returns:
     '    result As Boolean- False if function failed, True if function successful (MORE ERROR MESSAGES TO BE ADDED IN THE FUTURE)
-    Public Function ConfigureMotionInterrupt(threshold As Float, duration As Float) As Boolean
-        Dim result As Boolean = False
-        Dim thresholdByte As Byte = 0
-        Dim durationByte As Byte = 0
+    Public Function ConfigureMotionInterrupt(threshold As Float, duration As Float, interrupt As Byte, IntPin As Byte, Latch As Boolean, enabledInterrupts As Byte) As Boolean
         
-        If ((threshold >= LOW_TRIGGER_THRESHOLD And threshold <= HIGH_TRIGGER_THRESHOLD)) And ((duration >= LOW_DURATION_MS And duration <= HIGH_DURATION_MS)) Then 
-            
-            'set sleep mode
-            SetSleepToWakeThreshold(threshold)
-            SetSleepToWakeDuration(5000) //5 seconds in ms
-            
-            'No filter
-            SetFilterMode(HP_FILTER_NORMAL_MODE_RESET) //not sure this is right HP_FILTER_NORMAL_MODE?
-            SetFilterBypassBits(~(HP_FILTER_BYPASS_BIT | HP_FILTER_CLICK_BIT | HP_INT_AOI1_BIT | HP_INT_AOI2_BIT))
-            
-            'AOI interrupt on INT1 Pin
-            SetInterruptEnable1Bits(INT1_AOI1_BIT)
-            'Latch Interrupt (cleared by reading INT1_SRC register)
-            SetCTL5Bits(LIR_INT1)
-            'Set interrupt as active low on INT1 pin
-            SetCTL6Bits(H_LACTIVE)
-            'Set Threshold 0.0 ~ 23.622 Gs
+        If GetDataRate() = DATA_RATE_POWER_DOWN Then 'setup not run, set some defaults
+            Setup(LOW_POWER_MODE, DATA_RATE_200HZ, SCALE_16G)
+        End If
+        
+        'set sleep mode
+        SetSleepToWakeThreshold(threshold)
+        SetSleepToWakeDuration(5000) //5 seconds in ms
+        
+        'configure interrupt to pin, and enable interrupt latching (has to be cleared by reading int source register).
+        SetIntPinConfig(interrupt, IntPin, Latch)
+        
+        If interrupt = 1 Then
+            'Set Threshold 1.0 ~ 23.622 Gs
             SetINT1Threshold(threshold)
             'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
             SetINT1Duration(duration)
-            'Configure device to generate interrupt on X, Y, OR Z high event
-            SetINT1ActiveInterrupt(INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH)
-            
-            result = True
+            'Configure device to generate interrupt on configure events (usually all three axes high INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH )
+            SetINT1ActiveInterrupt(enabledInterrupts)
         Else
-            'incorrect range, return error
-            result = False
+            'Set Threshold 1.0 ~ 23.622 Gs
+            SetINT2Threshold(threshold)
+            'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+            SetINT2Duration(duration)
+            'Configure device to generate interrupt on configure events (usually all three axes high INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH )
+            SetINT2ActiveInterrupt(enabledInterrupts)
         End If
         
     End Function
     
+    Public Function ConfigureTransientInterrupt(threshold As Float, duration As Float) As Boolean
+        Return ConfigureTransientInterrupt(threshold, duration, 1, 1, True)
+    End Function
+    
+    Public Function ConfigureTransientInterrupt(threshold As Float, duration As Float, interrupt As Byte, IntPin As Byte, Latch As Boolean) As Boolean
+        Return ConfigureTransientInterrupt(threshold, duration, interrupt, IntPin, Latch, (INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH))
+    End Function
+    
+    '    ConfigureTransientInterrupt - configures device to interrupt on transient
+    '    NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    '
+    '    Inputs:
+    '    threshold As Float - trigger threshold (0.0 Gs ~ 23.622 Gs), 16mg steps (depends on range and mode)
+    '    Duration As Float - Duration for threshold to be present to active interrupt (0 ms (immediate) to 635ms), steps depends on ODR
+    '    interrupt - configure interrupt 1 or 2
+    '    IntPin - output interrupt on pin 1 or 2
+    '    Latch - True = Latch interrupt until INTX_SRC is read (where X is 1 or 2, whichever was configured)
+    '    enabledInterrupts - axes you want to generate interrupts on eg INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH or just INT_SRC_ZH (or INT_SRC_ZL if you want to detect passing below a threshold) 
+    
+    
+    '    Returns:
+    '    Nothing
+    Public Function ConfigureTransientInterrupt(threshold As Float, duration As Float, interrupt As Byte, IntPin As Byte, Latch As Boolean, enabledInterrupts As Byte) As Boolean
+        
+        If GetDataRate() = DATA_RATE_POWER_DOWN Then 'setup not run, set some defaults
+            Setup(LOW_POWER_MODE, DATA_RATE_200HZ, SCALE_16G)
+        End If
+        
+        'set sleep mode
+        SetSleepToWakeThreshold(threshold)
+        SetSleepToWakeDuration(5000) //5 seconds in ms
+        
+        'configure interrupt to pin, and enable interrupt latching (has to be cleared by reading int source register).
+        SetIntPinConfig(interrupt, IntPin, Latch)
+        
+        'HP filter config
+        'SetFilterMode(HP_FILTER_NORMAL_MODE_AUTO) //HP Filter auto reset on interrupt
+        SetFilterRange(HP_CUTOFF_HIGH)
+        
+        If interrupt = 1 Then
+            'Enable HP Filter
+            SetFilterAOI1(True) //HP Filter Interrupt on INT1
+            'Set Threshold 0.0 ~ 23.622 Gs
+            SetINT1Threshold(threshold)
+            'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+            SetINT1Duration(duration)
+            'dummy read of REF_DAT_CAP to reset HP filter
+            GetRefDataCap()
+            'Configure device to generate interrupt on configure events (usually all three axes high INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH )
+            SetINT1ActiveInterrupt(enabledInterrupts)
+        Else
+            'Enable HP Filter
+            SetFilterAOI2(True) //HP Filter Interrupt on INT2
+            'Set Threshold 0.0 ~ 23.622 Gs
+            SetINT2Threshold(threshold)
+            'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+            SetINT2Duration(duration)
+            'dummy read of REF_DAT_CAP to reset HP filter
+            GetRefDataCap()
+            'Configure device to generate interrupt on configure events (usually all three axes high INT_SRC_XH | INT_SRC_YH | INT_SRC_ZH )
+            SetINT2ActiveInterrupt(enabledInterrupts)
+        End If
+        
+    End Function
+    
+    Public Function ConfigureFreeFallInterrupt() As Boolean
+        Return ConfigureFreeFallInterrupt(0.35, 20.0, 1, 1, True)
+    End Function
+    
+    Public Function ConfigureFreeFallInterrupt(threshold As Float, duration As Float) As Boolean
+        Return ConfigureFreeFallInterrupt(threshold, duration, 1, 1, True)
+    End Function
+    
+    '    ConfigureFreeFallInterrupt - configures device to interrupt on free fall (currently will interupt on any enabled axis)
+    '    NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    '
+    '    Inputs:
+    '    threshold As Float - trigger threshold (0.0 Gs ~ 23.622 Gs), 16mg steps (depends on range and mode)
+    '    Duration As Float - Duration for threshold to be present to active interrupt (0 ms (immediate) to 635ms), steps depends on ODR
+    '    interrupt - configure interrupt 1 or 2
+    '    IntPin - output interrupt on pin 1 or 2
+    '    Latch - True = Latch interrupt until INTX_SRC is read (where X is 1 or 2, whichever was configured)
+    '    
+    '    Returns:
+    '    Nothing
+    Public Function ConfigureFreeFallInterrupt(threshold As Float, duration As Float, interrupt As Byte, IntPin As Byte, Latch As Boolean) As Boolean
+        
+        If GetDataRate() = DATA_RATE_POWER_DOWN Then 'setup not run, set some defaults
+            Setup(LOW_POWER_MODE, DATA_RATE_200HZ, SCALE_16G)
+        End If
+        
+        'set sleep mode
+        SetSleepToWakeThreshold(threshold)
+        SetSleepToWakeDuration(5000) //5 seconds in ms
+        
+        'configure interrupt to pin, and enable interrupt latching (has to be cleared by reading int source register).
+        SetIntPinConfig(interrupt, IntPin, Latch)
+        
+        If interrupt = 1 Then
+            'Set Threshold 0.0 ~ 23.622 Gs
+            SetINT1Threshold(threshold)
+            'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+            SetINT1Duration(duration)
+            'Configure device to generate interrupt on X, Y, AND Z low event (with INT_AOI_BIT, interrupts are ANDED)
+            'so X, Y and Z have to go below threshold to trigger event.
+            SetINT1ActiveInterrupt(INT_SRC_XL | INT_SRC_YL | INT_SRC_ZL | INT_AOI_BIT)
+        Else
+            'Set Threshold 0.0 ~ 23.622 Gs
+            SetINT2Threshold(threshold)
+            'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+            SetINT2Duration(duration)
+            'Configure device to generate interrupt on X, Y, AND Z low event (with INT_AOI_BIT, interrupts are ANDED)
+            'so X, Y and Z have to go below threshold to trigger event.
+            SetINT2ActiveInterrupt(INT_SRC_XL | INT_SRC_YL | INT_SRC_ZL | INT_AOI_BIT)
+        End If
+        
+    End Function
+    
+    Public Function ConfigureSingleClickInterrupt() As Boolean
+        Return ConfigureClickInterrupt(0.05, 20.0, 0, 0, (ZS), True, 1)
+    End Function
+    
+    Public Function ConfigureDoubleClickInterrupt() As Boolean
+        Return ConfigureClickInterrupt(0.05, 20.0, 100.0, 200.0, (ZD), True, 1)
+    End Function
+    
+    Public Function ConfigureSingleDoubleClickInterrupt() As Boolean
+        Return ConfigureClickInterrupt(0.05, 20.0, 100.0, 200.0, (ZS | ZD), True, 1)
+    End Function
+    
+    '    ConfigureClickInterrupt - configures device to interrupt on clicks (currently will interupt on any enabled axis)
+    '    NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    '    NOTE: When CLICK interrupt is generated, it can only be cleared by reading the CLICK_SRC register (see GetIntClickSource())
+    '
+    '    Inputs:
+    '    threshold As Float - trigger threshold (0.0 Gs ~ 23.622 Gs), 16mg steps (depends on range and mode)
+    '    Duration As Float - Duration for threshold to be present to active interrupt (0 ms (immediate) to 635ms), steps depends on ODR
+    '    latency As Float - Duration between double clicks (clicks within the period are not reconized)
+    '    window As Float - Duration diring which a second click must be detected to count as double click (after latency period has expired)
+    '    click As Byte - Enable/Disable Single_click detection as follows:
+    '    (ZD | ZS | YD |YS |XD |XS) - where S is single and D is double click enabled.
+    '    NOTE: one of the above should be enabled!
+    '    filter - True = HP filter enabled
+    '    IntPin - output interrupt on pin 1 or 2
+    '    
+    '    Returns:
+    '    Nothing
+    Public Function ConfigureClickInterrupt(threshold As Float, duration As Float, latency As Float, window As Float, click As Byte, filter As Boolean, IntPin As Byte) As Boolean
+        
+        If GetDataRate() = DATA_RATE_POWER_DOWN Then 'setup not run, set some defaults
+            Setup(LOW_POWER_MODE, DATA_RATE_200HZ, SCALE_16G)
+        End If
+        
+        'set sleep mode
+        SetSleepToWakeThreshold(threshold)
+        SetSleepToWakeDuration(5000) //5 seconds in ms
+        
+        If filter Then
+            SetFilterClick(True) 'enable HP filter for Click
+        End If
+        
+        If IntPin = 1 Then
+            'Add Click interrupt on INT1
+            SetPin1Interrupts(GetPin1Interrupts() | INT1_CLICK_BIT)
+        Else
+            'Add CLICK interrupt on INT2 Pin
+            SetCTL6Bits(GetCTL6Bits() | I2_CLICKen)
+        End If
+        
+        'Set Threshold 0.0 ~ 23.622 Gs
+        SetClickThreshold(threshold)
+        'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+        SetClickDuration(duration)
+        SetClickLatency(latency)
+        SetClickTimeWindow(window)
+        'Configure click interrupts (set single or double click for axes)
+        SetClickConfig(click)
+        
+    End Function
+    
+    Public Function ConfigureOrientationInterrupt() As Boolean
+        'detect change in orientation (for more than 160ms) all axes, INT1 pin 1, single interrupt on change
+        Return ConfigureOrientationInterrupt(0.5, 160.0, False, False, 1, 1)
+    End Function
+    
+    Public Function ConfigurePLInterrupt() As Boolean
+        'Portrate/Landscape Orientation detection, INT1 pin 1, single interrupt on change
+        Return ConfigureOrientationInterrupt(0.7, 160.0, False, True, 1, 1)
+    End Function
+    
+    Public Function ConfigureGarageDoorInterrupt() As Boolean
+        'Garage Door Orientation detection, 10Hz, 500ms Duration, INT1 pin 1, single interrupt on change
+        'detect bottom/down, or bottom/up depending on module orientation
+        Setup(LOW_POWER_MODE, DATA_RATE_10HZ, SCALE_2G)
+        Return ConfigureOrientationInterrupt(0.7, 500.0, False, False, 1, 1)
+    End Function
+    
+    '    ConfigureOrientationInterrupt - configures device to interrupt on orientation changes
+    '    can be set for x,y,z or just x and y
+    '    NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    '    NOTE: to decode orientation, read GetInt1Orientation(), or GetInt2Orientation() (for int 1 or 2)
+    '    NOTE: Interrupts do not latch in 6D orientation mode.
+    '
+    '    Inputs:
+    '    threshold As Float - trigger threshold (0.0 Gs ~ 1.0 Gs),set to 0.5g normally = 30 degrees (governs where change of orientation is detected)
+    '    Duration As Float - Duration for threshold to be present to active interrupt (0 ms (immediate) to 635ms), steps depends on ODR
+    '    pos_motion As Boolean - set to True to detect stable position, False to detect change in position.
+    '    disable_z As Boolean - True disables Z orientation detection (4D mode), False is 6D mode
+    '    interrupt - configure interrupt 1 or 2
+    '    IntPin - output interrupt on pin 1 or 2
+    
+    '    NOTE: In Position (stable position) mode, the interrupt is continuous while orientation remains the same. In movement (change in position) mode, the Interrupt is generated for 1/ODR cycle.
+    '    NOTE: pos_motion = True (stable position mode) will continuously generate interrupts, which will prevent your module from sleeping, and will run your battery down fast!
+    '    
+    '    Returns:
+    '    Nothing
+    Public Function ConfigureOrientationInterrupt(threshold As Float, duration As Float, pos_motion As Boolean, disable_z As Boolean, interrupt As Byte, IntPin As Byte) As Boolean
+        
+        If GetDataRate() = DATA_RATE_POWER_DOWN Then 'setup not run, set some defaults
+            Setup(LOW_POWER_MODE, DATA_RATE_25HZ, SCALE_2G)
+        End If
+        
+        'set sleep mode
+        SetSleepToWakeThreshold(threshold)
+        SetSleepToWakeDuration(5000) //5 seconds in ms
+        
+        'configure interrupt to pin.
+        SetIntPinConfig(interrupt, IntPin, False) 'note interrupts do not latch in 6D mode (I think, the DS is confusing on this point)
+        
+        Dim Axes As Byte = (INT_SRC_XH | INT_SRC_XL | INT_SRC_YH | INT_SRC_YL | INT_6D_BIT)
+        If Not disable_z Then
+            Axes = Axes | INT_SRC_ZH | INT_SRC_ZL
+        End If
+        If pos_motion Then
+            Axes = Axes | INT_AOI_BIT 'enable position (rather than motion sensing) - interrupts are continuous in this mode
+        End If
+        
+        If interrupt = 1 Then
+            'Enable/disable Z axis (6D/4D mode)
+            If disable_z Then
+                SetCTL5Bits(GetCTL5Bits() | D4D_INT1)
+            End If
+            'Set Threshold 0.0 ~ 1.0 Gs
+            SetINT1Threshold(threshold)
+            'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+            SetINT1Duration(duration)
+            'enable interrupts
+            SetINT1ActiveInterrupt(Axes)
+        Else
+            'Enable/disable Z axis (6D/4D mode)
+            If disable_z Then
+                SetCTL5Bits(GetCTL5Bits() | D4D_INT2)
+            End If
+            'Set Threshold 0.0 ~ 1.0 Gs
+            SetINT2Threshold(threshold)
+            'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+            SetINT2Duration(duration)
+            'enable interrupts
+            SetINT2ActiveInterrupt(Axes)
+        End If
+        
+    End Function
+    
+    'GetPitchRoll - returns the pitch and roll in Radians NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    '
+    'Returns:
+    'returns the pitch and roll in radians As ListOfFloat
+    Public Function GetPitchRoll() As ListOfFloat
+        'get pitch and roll in Radians
+        'need all three axes enabled for this calculation
+        'from ST Application Note D026445 Rev 1 No idea if this works
+        If GetDataRate() = DATA_RATE_POWER_DOWN Then 'setup not run, set some defaults
+            Setup(LOW_POWER_MODE, DATA_RATE_50HZ, SCALE_2G)
+        End If
+        
+        Dim result As ListOfFloat = New ListOfFloat
+        Dim Pitch As Float = Float.NaN
+        Dim Roll As Float = Float.NaN
+        Dim accelValues As ListOfFloat = GetAccel()
+        
+        If accelValues <> Nothing Then
+            Pitch = (accelValues(0) / (accelValues(1).Pow(2.0) + accelValues(2).Pow(2.0)).Sqrt()).ATan()
+            Roll = (accelValues(1) / (accelValues(0).Pow(2.0) + accelValues(2).Pow(2.0)).Sqrt()).ATan() 
+        End If
+        result.Add(Pitch)
+        result.Add(Roll)
+        Return result
+    End Function
+    
+    'GetPitchRoll - returns the pitch and roll in degrees NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    '
+    'Returns:
+    'returns the pitch and roll in degrees As ListOfFloat
+    Public Function GetPitchRollDegrees() As ListOfFloat
+        Dim result As ListOfFloat = New ListOfFloat
+        Dim PitchRoll As ListOfFloat = GetPitchRoll()
+        Dim Pitch As Float = Float.NaN
+        Dim Roll As Float = Float.NaN
+        If PitchRoll(0) <> Float.NaN Then
+            Pitch = PitchRoll(0) * (180.0 / Float.Pi)
+        End If
+        If PitchRoll(1) <> Float.NaN Then
+            Roll = PitchRoll(1) * (180.0 / Float.Pi)
+        End If
+        result.Add(Pitch)
+        result.Add(Roll)
+        Return result
+    End Function
     
     'GetAccel - returns the acceleration of all axis NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
     '
@@ -1193,25 +1778,34 @@ Class LIS2DH12
     Public Function GetAccel() As ListOfFloat
         'Returns the acceleration reading of the specified axis in Gs
         'Z-axis acceleration data. The value is expressed as two’s complement left-justified.
+        If GetDataRate() = DATA_RATE_POWER_DOWN Then 'setup not run, set some defaults
+            Setup(LOW_POWER_MODE, DATA_RATE_200HZ, SCALE_16G)
+        End If
+        
         Dim scaleFactor As Float = 0.0
         Dim XaccelerationReading As Short = 0
         Dim YaccelerationReading As Short = 0
         Dim ZaccelerationReading As Short = 0
+        Dim accelX As Float = 0
+        Dim accelY As Float = 0
+        Dim accelZ As Float = 0
         Dim acceleration As ListOfFloat = New ListOfFloat // x/y/z accel output data stored here
         
         Dim scale As Byte = GetScale()
         Dim mode As Byte = GetMode()
         
+        
         Select scale
             Case SCALE_2G
-                scaleFactor = 0.016 '16mg per bit
+                scaleFactor = 0.001 '1mg per bit
             Case SCALE_4G
-                scaleFactor = 0.032 '32mg per bit
+                scaleFactor = 0.002 '2mg per bit
             Case SCALE_8G
-                scaleFactor = 0.064 '64mg per bit
+                scaleFactor = 0.004 '4mg per bit
             Case SCALE_16G
-                scaleFactor = 0.192 '192mg per bit
+                scaleFactor = 0.012 '12mg per bit
         End Select
+        
         
         'read acceleration registers
         Dim Data As ListOfByte = readAccelDataBytes()
@@ -1234,11 +1828,10 @@ Class LIS2DH12
                     'negative number
                     ZaccelerationReading = (Data(5) ^ 0xff) * -1                 
                 End If
-                
-                'convert to acceleration        
-                acceleration.Add(XaccelerationReading * scaleFactor * LP_FACTOR)
-                acceleration.Add(ZaccelerationReading * scaleFactor * LP_FACTOR)
-                acceleration.Add(ZaccelerationReading * scaleFactor * LP_FACTOR)
+                'convert to acceleration
+                accelX = XaccelerationReading * scaleFactor * LP_FACTOR
+                accelY = YaccelerationReading * scaleFactor * LP_FACTOR
+                accelZ = ZaccelerationReading * scaleFactor * LP_FACTOR
                 
             Case NORMAL_MODE
                 '10 bit signed            
@@ -1258,9 +1851,9 @@ Class LIS2DH12
                     ZaccelerationReading = (ZaccelerationReading ^ 0x03ff) * -1
                 End If
                 'convert to acceleration        
-                acceleration.Add(XaccelerationReading * scaleFactor * NM_FACTOR)
-                acceleration.Add(ZaccelerationReading * scaleFactor * NM_FACTOR)
-                acceleration.Add(ZaccelerationReading * scaleFactor * NM_FACTOR)
+                accelX = XaccelerationReading.ToFloat* scaleFactor * NM_FACTOR
+                accelY = YaccelerationReading.ToFloat* scaleFactor * NM_FACTOR
+                accelZ = ZaccelerationReading.ToFloat* scaleFactor * NM_FACTOR
                 
             Case HIGH_RESOLUTION_MODE
                 '12 bit signed
@@ -1280,10 +1873,14 @@ Class LIS2DH12
                     ZaccelerationReading = (ZaccelerationReading ^ 0x0fff) * -1
                 End If
                 'convert to acceleration        
-                acceleration.Add(XaccelerationReading * scaleFactor)
-                acceleration.Add(ZaccelerationReading * scaleFactor)
-                acceleration.Add(ZaccelerationReading * scaleFactor)
+                accelX = XaccelerationReading.ToFloat* scaleFactor
+                accelY = YaccelerationReading.ToFloat* scaleFactor
+                accelZ = ZaccelerationReading.ToFloat* scaleFactor
         End Select
+        
+        acceleration.Add(accelX)
+        acceleration.Add(accelY)
+        acceleration.Add(accelZ)
         
         Return acceleration
         
@@ -1297,6 +1894,10 @@ Class LIS2DH12
     'Returns:
     'returns the acceleration value in Gs As Float
     Public Function Accel(xyz As Byte) As Float
+        If GetDataRate() = DATA_RATE_POWER_DOWN Then 'setup not run, set some defaults
+            Setup(LOW_POWER_MODE, DATA_RATE_200HZ, SCALE_16G)
+        End If
+        
         Dim accelValues As ListOfFloat = GetAccel()
         If accelValues = Nothing Then
             Return Nothing
@@ -1321,7 +1922,7 @@ Class LIS2DH12
     'Inputs: NONE
     '
     'Returns:
-    'returns the ID of the LISDH12, should be 0x33 if device is seen (actually returns 0)
+    'returns the ID of the LISDH12, should be 0x33 if device is powered on (takes 5ms to boot)
     Public Function GetID() As Byte
         Return Read(WHO_AM_I)
     End Function
@@ -1340,7 +1941,7 @@ Class LIS2DH12
     Private Function Read(address As Byte, length As Byte) As ListOfByte
         Dim data As ListOfByte = New ListOfByte
         
-        data.Add(address)
+        data.Add(address | 0x80) '0x80 allows sequential reading of addresses
         gAccelerometer.Write(data, False)
         
         Return gAccelerometer.Read(length, True)
@@ -1357,7 +1958,7 @@ Class LIS2DH12
     
     
     Private Function Write(address As Byte, values As ListOfByte) As Boolean
-        values.InsertAt(0, address)
+        values.InsertAt(0, address | 0x80) '0x80 allows sequential writing of addresses
         
         Return gAccelerometer.Write(values, True)
     End Function // Write

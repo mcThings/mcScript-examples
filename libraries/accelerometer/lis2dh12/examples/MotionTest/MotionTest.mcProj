@@ -1,21 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <ProjectName>DoorSensor</ProjectName>
+  <ProjectName>MotionTest</ProjectName>
   <DeviceType>mcMod120</DeviceType>
-  <LastDocumentName>..\..\Examples\LIS2DH12.mcScript</LastDocumentName>
+  <LastDocumentName>MotionTest.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
-      <Name>DoorSensor120</Name>
-      <FileSpec>DoorSensor120.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
-      <BreakPointLineNumbers />
-    </DocumentSetting>
-    <DocumentSetting>
-      <Name>TempSensor</Name>
-      <FileSpec>..\..\Examples\TempSensor.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
+      <Name>MotionTest</Name>
+      <FileSpec>MotionTest.mcScript</FileSpec>
+      <Row>33</Row>
+      <Col>35</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
@@ -28,13 +21,6 @@
     <DocumentSetting>
       <Name>LIS2DH12</Name>
       <FileSpec>..\..\Examples\LIS2DH12.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
-      <BreakPointLineNumbers />
-    </DocumentSetting>
-    <DocumentSetting>
-      <Name>Time</Name>
-      <FileSpec>..\..\Examples\Time.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />

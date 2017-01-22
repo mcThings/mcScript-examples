@@ -1,0 +1,69 @@
+﻿// Readings Example for 120 module new accelerometer features
+// Requires MQTT and LIS2DH12 library
+
+// default configuration is:
+// High Resolution mode, 1 Hz, 2G 
+// x,y,z accel (in g),  pitch and roll (in degrees) displayed every 5 seconds (no you can't detect yaw, need a magnetometer for that!)
+// Sleep mode enabled only when interrupts are enabled (data rate is 10Hz in sleep mode) - wake time is 5 seconds (ie accelerometer wakes up for 5 sconds when threshold is exceeded).
+// Led Green = Reading/Publishing
+
+// N Waterton 22nd January 2017 V1.0: First Release
+
+
+Class LISDH12_Test
+    Shared accel As LIS2DH12
+    
+    Shared Event Boot()
+        //Lplan.SetMidPowerMode(5000)
+        MQTT.Publish("Status", "Booted")
+        accel = New LIS2DH12
+        If accel.online Then
+            MQTT.Publish("Status", "LIS2DH12TR Sensor Online")
+            If LIS2DH12.VERSION < 5 Then
+                MQTT.Publish("Status", "LIS2DH12 Library is out of Date, please upgrade!")
+            Else
+                'version 5 and above of library
+                'higher resolution/higher data rates use more power. Low power 10Hz is lowest at 2uA (this is sleep mode for interrupts).
+                accel.Setup(LIS2DH12.HIGH_RESOLUTION_MODE, LIS2DH12.DATA_RATE_1HZ, LIS2DH12.SCALE_2G) 'set faster data rate for faster readings
+                'accel.Setup(LIS2DH12.NORMAL_MODE, LIS2DH12.DATA_RATE_10HZ, LIS2DH12.SCALE_16G) 'various settings to try
+                'accel.Setup(LIS2DH12.LOW_POWER_MODE, LIS2DH12.DATA_RATE_100HZ, LIS2DH12.SCALE_4G) 'various settings to try
+                
+                
+                'publish paramterers
+                Dim accelconfig As Json = accel.ReadConfiguration(0)
+                MQTT.Publish("config", accelconfig)
+                accelconfig = accel.ReadConfiguration(1)
+                MQTT.Publish("int1", accelconfig)
+                accelconfig = accel.ReadConfiguration(2)
+                MQTT.Publish("int2", accelconfig)
+                accelconfig = accel.ReadConfiguration(3)
+                MQTT.Publish("click", accelconfig)
+                accelconfig = accel.ReadConfiguration(4)
+                MQTT.Publish("misc", accelconfig)
+            End If
+        Else
+            MQTT.Publish("Status", "Accel Sensor Offline")
+        End If
+        //MQTT.use_delay = True
+    End Event
+    
+    Shared Event Publish() RaiseEvent Every 5 Seconds
+        accel.enable()
+        Dim accelValues As ListOfFloat = accel.GetAccel()
+        Dim PitchRoll As ListOfFloat = accel.GetPitchRollDegrees()
+        accel.disable() 'this sets 0Hz mode between readings, minnimum power but interrupts will not work!
+        
+        LedGreen = True
+        Thread.Sleep(3000)
+        LedGreen = False
+        
+        Dim jData As Json = New Json
+        jData.Add("X_Accel", accelValues(0))
+        jData.Add("Y_Accel", accelValues(1))
+        jData.Add("Z_Accel", accelValues(2))
+        jData.Add("Pitch", PitchRoll(0))
+        jData.Add("Roll", PitchRoll(1))
+        MQTT.Publish("Data", jData)
+        
+    End Event
+End Class
