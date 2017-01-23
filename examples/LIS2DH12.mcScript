@@ -1038,16 +1038,19 @@ Class LIS2DH12
             Dim tmpstr As String
             For item_number As Integer = 0 To jdata.Count() - 1
                 tmpstr = jdata.Item(item_number).Name()
-                If tmpstr.Contains("x") Then
+                If tmpstr.Contains("x") Or tmpstr.Contains("top") Or tmpstr.Contains("bottom") Then
                     jtmp.Add(tmpstr, accelValues(0))
-                ElseIf tmpstr.Contains("y") Then
+                ElseIf tmpstr.Contains("y") Or tmpstr.Contains("left") Or tmpstr.Contains("right") Then
                     jtmp.Add(tmpstr, accelValues(1))
-                ElseIf tmpstr.Contains("z") Then
+                ElseIf tmpstr.Contains("z") Or tmpstr.Contains("up") Or tmpstr.Contains("down") Then
                     jtmp.Add(tmpstr, accelValues(2))
                 End If
             Next
         End If
-        Return jtmp
+        If jtmp.Count> 0 Then
+            Return jtmp
+        End If
+        Return jdata
     End Function
     
     Public Function GetValuesSummaryasJson(accelValues As ListOfFloat) As Json
