@@ -8,6 +8,7 @@
 
 // N Waterton 14th January 2017 V1.4: Beta Release - General mods
 // N Waterton 22nd January 2017 V1.5: First Release - Massive re-write NOTE: Could be breaking changes!
+// N Waterton 23rd January 2017 V1.51: First Release - Minor mods to interrupt feedback functions, plus one bug fix (enable interrupts)
 
 // All functions except FIFO supported.
 // eg: motion, transient, freefall, orientation, click (double or single)
@@ -24,6 +25,8 @@
 Class LIS2DH12
     'Constants
     Const VERSION As Integer = 5
+    Const MINOR_VERSION As Integer = 1
+    Const VERSION_STRING As String = "V1.51"
     
     'I2C constants
     Const LIS2DH12_I2C_ADDR As Byte = 0x19
@@ -133,7 +136,6 @@ Class LIS2DH12
     Const P2_ACT As Byte = 0x08
     Const H_LACTIVE As Byte = 0x02
     
-    
     'Interrupt constants
     Const INT1_ENABLE_MASK As Byte = 0xfe
     Const INT1_CLICK_BIT As Byte = 0x80
@@ -145,7 +147,6 @@ Class LIS2DH12
     Const INT1_OVERRUN_BIT As Byte = 0x02
     Const INT1_PIN As Byte = 0x01
     Const INT2_PIN As Byte = 0x02
-    
     
     Const INT_ACTIVE As Byte = 0x40
     Const INT_SRC_ZH As Byte = 0x20
@@ -221,6 +222,11 @@ Class LIS2DH12
     Const X_AXIS As Byte = 0x01
     Const Y_AXIS As Byte = 0x02
     Const Z_AXIS As Byte = 0x04
+    
+    'Options for json returns
+    Const J_NONE As Byte = 0x00
+    Const J_VALUES As Byte = 0x01
+    Const J_SUMMARY As Byte = 0x02
     
     'Public variables
     Public online As Boolean = False
@@ -897,7 +903,7 @@ Class LIS2DH12
         If active Then
             SetINT1ActiveInterrupt(gint1cfg)
         Else
-            gint1cfg = GetINT1ActiveInterrupt()
+            gint1cfg = GetINT1Configuration()
             SetINT1ActiveInterrupt(0x00)
         End If
     End Sub
@@ -910,7 +916,7 @@ Class LIS2DH12
         If active Then
             SetINT2ActiveInterrupt(gint2cfg)
         Else
-            gint2cfg = GetINT2ActiveInterrupt()
+            gint2cfg = GetINT2Configuration()
             SetINT2ActiveInterrupt(0x00)
         End If
     End Sub
@@ -932,6 +938,24 @@ Class LIS2DH12
         'XLIE/XDOWNE Enable interrupt generation on X low event or on direction recognition. bit 0
         Write(INT1_CFG, interrupt)
     End Sub
+    
+    Public Function GetINT1Configuration() As Byte
+        'AOI And/Or combination of interrupt events. Default value: 0. Refer to Table 51 bit 7
+        '6D 6-direction detection function enabled. Default value: 0. Refer to Table 51 bit 6
+        'AOI 6D Interrupt mode
+        ' 0  0 OR combination of interrupt events
+        ' 0  1 6-direction movement recognition
+        ' 1  0 AND combination of interrupt events
+        ' 1  1 6-direction position recognition
+        'Default value: 0 (0: disable interrupt request;1: enable interrupt request) 
+        'ZHIE/ZUPE Enable interrupt generation on Z high event or on direction recognition. bit 5
+        'ZLIE/ZDOWNE Enable interrupt generation on Z low event or on direction recognition. bit 4
+        'YHIE/YUPE Enable interrupt generation on Y high event or on direction recognition. bit 3
+        'YLIE/YDOWNE Enable interrupt generation on Y low event or on direction recognition. bit 2
+        'XHIE/XUPE Enable interrupt generation on X high event or on direction recognition. bit 1
+        'XLIE/XDOWNE Enable interrupt generation on X low event or on direction recognition. bit 0
+        Return Read(INT1_CFG)
+    End Function
     
     Public Function GetINT1ActiveInterrupt() As Byte
         'bit 7 not used
@@ -956,7 +980,7 @@ Class LIS2DH12
         Dim result As ListOfString = New ListOfString
         
         If (intSource & INT_ACTIVE) = INT_ACTIVE Then 'only report if active
-            intSource = intSource & Read(configReg) 'only report on enabled interrupts
+            intSource = intSource & configReg 'only report on enabled interrupts
             If (intSource & INT_SRC_ZH) = INT_SRC_ZH Then
                 result.Add("z_high")
             End If
@@ -974,9 +998,12 @@ Class LIS2DH12
             End If
             If (intSource & INT_SRC_XL) = INT_SRC_XL Then
                 result.Add("x_low")
-            End If 
-        Else 
-            result.Add("none")
+            End If
+            If (intSource & (INT_SRC_XL | INT_SRC_YL | INT_SRC_ZL)) = (INT_SRC_XL | INT_SRC_YL | INT_SRC_ZL) Then
+                result.Add("freefall")
+            End If
+            'Else 
+            '    result.Add("none")
         End If
         
         Return result
@@ -984,8 +1011,129 @@ Class LIS2DH12
     
     Public Function GetInt1Source() As ListOfString
         'get active interrupts on INT1
-        Return GetIntSource(GetINT1ActiveInterrupt(), INT1_CFG)
+        Dim result As ListOfString = New ListOfString
+        If (GetINT1Configuration() & INT_6D_BIT) = INT_6D_BIT Then 'orientation mode
+            result.Add(GetInt1Orientation())
+        Else
+            result = GetIntSource(GetINT1ActiveInterrupt(), GetINT1Configuration())
+        End If
+        Return result
     End Function // GetInt1Source
+    
+    Public Function GetInt2Source() As ListOfString
+        'get active interrupts on INT2
+        Dim result As ListOfString = New ListOfString
+        If (GetINT2Configuration() & INT_6D_BIT) = INT_6D_BIT Then 'orientation mode
+            result.Add(GetInt2Orientation())
+        Else
+            result = GetIntSource(GetINT2ActiveInterrupt(), GetINT2Configuration())
+        End If
+        Return result
+    End Function // GetInt2Source
+    
+    Public Function insertValuesintoJson(jdata As Json, accelValues As ListOfFloat) As Json
+        'insert values into each axis in json
+        Dim jtmp As Json = New Json
+        If accelValues.Count= 3 And jdata.Count> 0 Then
+            Dim tmpstr As String
+            For item_number As Integer = 0 To jdata.Count() - 1
+                tmpstr = jdata.Item(item_number).Name()
+                If tmpstr.Contains("x") Then
+                    jtmp.Add(tmpstr, accelValues(0))
+                ElseIf tmpstr.Contains("y") Then
+                    jtmp.Add(tmpstr, accelValues(1))
+                ElseIf tmpstr.Contains("z") Then
+                    jtmp.Add(tmpstr, accelValues(2))
+                End If
+            Next
+        End If
+        Return jtmp
+    End Function
+    
+    Public Function GetValuesSummaryasJson(accelValues As ListOfFloat) As Json
+        'get summary of x,y,z values as json
+        Dim jaccelValues As Json = New Json
+        If accelValues.Count= 3 Then
+            jaccelValues.Add("x", accelValues(0))
+            jaccelValues.Add("y", accelValues(1))
+            jaccelValues.Add("z", accelValues(2))
+        End If
+        Return jaccelValues
+    End Function
+    
+    Public Function GetInt1SourceAsJson() As Json
+        'get json with Boolean jValue
+        Return GetInt1SourceAsJson(J_NONE)
+    End Function
+    
+    Public Function GetInt2SourceAsJson() As Json
+        'get json with Boolean jValue
+        Return GetInt2SourceAsJson(J_NONE)
+    End Function
+    
+    Public Function GetInt1SourceAsJson(options As Byte) As Json
+        'get active interrupts on INT1 as json
+        Return GetIntSourceAsJson(options, GetInt1Source())
+    End Function // GetInt1SourceAsJson
+    
+    Public Function GetInt2SourceAsJson(options As Byte) As Json
+        'get active interrupts on INT2 as json
+        Return GetIntSourceAsJson(options, GetInt2Source())
+    End Function // GetInt2SourceAsJson
+    
+    Public Function GetIntSourceAsJson(options As Byte, source As ListOfString) As Json
+        'get active interrupts as json
+        'options are J_NONE (no values, just Boolean jvalue)
+        '            J_VALUES (acceleration value replaces boolean)
+        '            J_SUMMARY (summary of x,y,z values is appended to json)
+        'you can combine the two options (J_VALUES | J_SUMMARY) to get variants
+        Dim result As ListOfString = source
+        Dim jResult As Json = New Json
+        Dim accelValues As ListOfFloat
+        
+        If result.Count> 0 Then
+            For Each item In result
+                jResult.Add(item, True)
+            Next
+            
+            If options > J_NONE Then
+                accelValues = GetAccel()
+            End If
+            If (options & J_VALUES) = J_VALUES Then
+                jResult = insertValuesintoJson(jResult, accelValues)
+            End If
+            If (options & J_SUMMARY) = J_SUMMARY Then
+                jResult.Add("Values", GetValuesSummaryasJson(accelValues))
+            End If
+        End If
+        Return jResult
+    End Function // GetIntSourceAsJson
+    
+    Public Function GetInt1SourceAsJsonValue() As ListOfJValue
+        'get active interrupts on INT1 as ListOfJValue
+        Dim result As ListOfString = GetInt1Source()
+        Dim jResult As ListOfJValue = New ListOfJValue
+        If result.Count> 0 Then
+            For Each item In result
+                Dim jitem As JValue = New JValue(item)
+                jResult.Add(jitem)
+            Next
+        End If
+        Return jResult
+    End Function // GetInt1SourceAsJson
+    
+    Public Function GetInt2SourceAsJsonValue() As ListOfJValue
+        'get active interrupts on INT2 as ListOfJValue
+        Dim result As ListOfString = GetInt2Source()
+        Dim jResult As ListOfJValue = New ListOfJValue
+        If result.Count> 0 Then
+            For Each item In result
+                Dim jitem As JValue = New JValue(item)
+                jResult.Add(jitem)
+            Next
+        End If
+        Return jResult
+    End Function // GetInt1SourceAsJson
     
     Public Function GetInt1Orientation() As String
         'special function to decode INT1_SOURCE in 6D/4D mode (only valid for that mode)
@@ -1061,6 +1209,24 @@ Class LIS2DH12
         Write(INT2_CFG, interrupt)
     End Sub
     
+    Public Function GetINT2Configuration() As Byte
+        'AOI And/Or combination of interrupt events. Default value: 0. Refer to Table 51 bit 7
+        '6D 6-direction detection function enabled. Default value: 0. Refer to Table 51 bit 6
+        'AOI 6D Interrupt mode
+        ' 0  0 OR combination of interrupt events
+        ' 0  1 6-direction movement recognition
+        ' 1  0 AND combination of interrupt events
+        ' 1  1 6-direction position recognition
+        'Default value: 0 (0: disable interrupt request;1: enable interrupt request) 
+        'ZHIE/ZUPE Enable interrupt generation on Z high event or on direction recognition. bit 5
+        'ZLIE/ZDOWNE Enable interrupt generation on Z low event or on direction recognition. bit 4
+        'YHIE/YUPE Enable interrupt generation on Y high event or on direction recognition. bit 3
+        'YLIE/YDOWNE Enable interrupt generation on Y low event or on direction recognition. bit 2
+        'XHIE/XUPE Enable interrupt generation on X high event or on direction recognition. bit 1
+        'XLIE/XDOWNE Enable interrupt generation on X low event or on direction recognition. bit 0
+        Return Read(INT2_CFG)
+    End Function
+    
     Public Function GetINT2ActiveInterrupt() As Byte
         'bit 7 not used
         'IA Interrupt active. Default value: 0 bit 6
@@ -1079,11 +1245,6 @@ Class LIS2DH12
         '(0: no interrupt, 1: X low event has occurred)
         Return Read(INT2_SRC)
     End Function
-    
-    Public Function GetInt2Source() As ListOfString
-        'get active interrupts on INT2
-        Return GetIntSource(GetINT2ActiveInterrupt(), INT2_CFG)
-    End Function // GetInt2Source
     
     Public Sub SetRefDataCap(threshold As Float)
         'An 8-bit unsigned number, with g/LSB. dependant on range setting and mode (values are for LOW_POWER_MODE)
