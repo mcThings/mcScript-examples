@@ -9,6 +9,8 @@
 // N Waterton 14th January 2017 V1.4: Beta Release - General mods
 // N Waterton 22nd January 2017 V1.5: First Release - Massive re-write NOTE: Could be breaking changes!
 // N Waterton 23rd January 2017 V1.51: First Release - Minor mods to interrupt feedback functions, plus one bug fix (enable interrupts)
+// N Waterton 24th January 2017 V1.52: First Release - Minor mods to click interrupt feedback functions
+
 
 // All functions except FIFO supported.
 // eg: motion, transient, freefall, orientation, click (double or single)
@@ -25,8 +27,8 @@
 Class LIS2DH12
     'Constants
     Const VERSION As Integer = 5
-    Const MINOR_VERSION As Integer = 1
-    Const VERSION_STRING As String = "V1.51"
+    Const MINOR_VERSION As Integer = 2
+    Const VERSION_STRING As String = "V1.52"
     
     'I2C constants
     Const LIS2DH12_I2C_ADDR As Byte = 0x19
@@ -198,6 +200,9 @@ Class LIS2DH12
     Const CLICK_Z As Byte = 0x04
     Const CLICK_Y As Byte = 0x02
     Const CLICK_X As Byte = 0x01
+    
+    'Click Latch Interrupt
+    Const LIR_Click As Byte = 0x80 'dont know if this exists - totally missing from the datasheet
     
     'AOI / 6D configuration
     Const INT_AOI_MASK As Byte = 0xc0
@@ -1002,8 +1007,6 @@ Class LIS2DH12
             If (intSource & (INT_SRC_XL | INT_SRC_YL | INT_SRC_ZL)) = (INT_SRC_XL | INT_SRC_YL | INT_SRC_ZL) Then
                 result.Add("freefall")
             End If
-            'Else 
-            '    result.Add("none")
         End If
         
         Return result
@@ -1036,14 +1039,18 @@ Class LIS2DH12
         Dim jtmp As Json = New Json
         If accelValues.Count= 3 And jdata.Count> 0 Then
             Dim tmpstr As String
+            Dim jval As JProperty
             For item_number As Integer = 0 To jdata.Count() - 1
-                tmpstr = jdata.Item(item_number).Name()
+                jval = jdata.Item(item_number)
+                tmpstr = jval.Name()
                 If tmpstr.Contains("x") Or tmpstr.Contains("top") Or tmpstr.Contains("bottom") Then
                     jtmp.Add(tmpstr, accelValues(0))
                 ElseIf tmpstr.Contains("y") Or tmpstr.Contains("left") Or tmpstr.Contains("right") Then
                     jtmp.Add(tmpstr, accelValues(1))
                 ElseIf tmpstr.Contains("z") Or tmpstr.Contains("up") Or tmpstr.Contains("down") Then
                     jtmp.Add(tmpstr, accelValues(2))
+                Else
+                    jtmp.Add(jval)
                 End If
             Next
         End If
@@ -1112,9 +1119,9 @@ Class LIS2DH12
         Return jResult
     End Function // GetIntSourceAsJson
     
-    Public Function GetInt1SourceAsJsonValue() As ListOfJValue
-        'get active interrupts on INT1 as ListOfJValue
-        Dim result As ListOfString = GetInt1Source()
+    Public Function GetIntSourceAsJsonValue(source As ListOfString) As ListOfJValue
+        'get active interrupts as ListOfJValue
+        Dim result As ListOfString = source
         Dim jResult As ListOfJValue = New ListOfJValue
         If result.Count> 0 Then
             For Each item In result
@@ -1123,19 +1130,16 @@ Class LIS2DH12
             Next
         End If
         Return jResult
+    End Function // GetIntSourceAsJson
+    
+    Public Function GetInt1SourceAsJsonValue() As ListOfJValue
+        'get active interrupts on INT1 as ListOfJValue
+        Return GetIntSourceAsJsonValue(GetInt1Source())
     End Function // GetInt1SourceAsJson
     
     Public Function GetInt2SourceAsJsonValue() As ListOfJValue
         'get active interrupts on INT2 as ListOfJValue
-        Dim result As ListOfString = GetInt2Source()
-        Dim jResult As ListOfJValue = New ListOfJValue
-        If result.Count> 0 Then
-            For Each item In result
-                Dim jitem As JValue = New JValue(item)
-                jResult.Add(jitem)
-            Next
-        End If
-        Return jResult
+        Return GetIntSourceAsJsonValue(GetInt2Source())
     End Function // GetInt1SourceAsJson
     
     Public Function GetInt1Orientation() As String
@@ -1305,6 +1309,24 @@ Class LIS2DH12
         Return Read(CLICK_CFG)
     End Function
     
+    Public Sub SetClickLatch(mode As Boolean)
+        'If the LIR_Click bit is not set, the interrupt is kept high for the duration of the latency window.
+        'If the LIR_Click bit is set, the interrupt is kept high until the CLICK_SRC (39h) register is read.
+        'This is missing from the datasheet, so its a guess as to whether it exists
+        If mode Then
+            Write(CLICK_THS, (Read(CLICK_THS) & ~LIR_Click) | LIR_Click)
+        Else
+            Write(CLICK_THS, (Read(CLICK_THS) & ~LIR_Click))
+        End If
+    End Sub
+    
+    Public Function GetClickLatch() As Boolean
+        'If the LIR_Click bit is not set, the interrupt is kept high for the duration of the latency window.
+        'If the LIR_Click bit is set, the interrupt is kept high until the CLICK_SRC (39h) register is read.
+        'This is missing from the datasheet, so its a guess as to whether it exists
+        Return (Read(CLICK_THS) & LIR_Click).ToBoolean()
+    End Function
+    
     Public Function GetClickSource() As Byte
         'IA Interrupt active. Default value: 0 bit 6
         '(0: no interrupt has been generated; 1: one or more interrupts have been generated)
@@ -1320,37 +1342,51 @@ Class LIS2DH12
         Return Read(CLICK_SRC)
     End Function
     
+    Public Function GetIntClickSourceAsJson() As Json
+        'get active interrupts on Click as json
+        Return GetIntClickSourceAsJson(J_NONE)
+    End Function // GetIntClickSourceAsJson
+    
+    Public Function GetIntClickSourceAsJson(options As Byte) As Json
+        'get active click interrupts as json
+        Return GetIntSourceAsJson(options, GetIntClickSource())
+    End Function // GetIntClickSourceAsJson
+    
     Public Function GetIntClickSource() As ListOfString
         Dim intSource As Byte = GetClickSource()
         Dim result As ListOfString = New ListOfString
         
-        If (intSource & CLICK_IA) = CLICK_IA Then
-            result.Add("active")
-        End If
-        If (intSource & DClick) = DClick Then
-            result.Add("double")
-        ElseIf (intSource & SClick) = SClick Then
-            result.Add("single")
-        End If
-        If (intSource & CLICK_Z) = CLICK_Z Then
-            If (intSource & Sign) = Sign Then
-                result.Add("z_axis_positive")
-            Else
-                result.Add("z_axis_negative")
+        If (intSource & CLICK_IA) = CLICK_IA Then 'only report if active
+            If (intSource & DClick) = DClick Then
+                result.Add("double")
+                'ElseIf (intSource & SClick) = SClick Then
+                '    result.Add("single")
             End If
-        End If
-        If (intSource & CLICK_Y) = CLICK_Y Then
-            If (intSource & Sign) = Sign Then
-                result.Add("y_axis_positive")
-            Else
-                result.Add("y_axis_negative")
+            
+            If (intSource & SClick) = SClick Then
+                result.Add("single")
             End If
-        End If
-        If (intSource & CLICK_X) = CLICK_X Then
-            If (intSource & Sign) = Sign Then
-                result.Add("x_axis_positive")
-            Else
-                result.Add("x_axis_negative")
+            
+            If (intSource & CLICK_Z) = CLICK_Z Then
+                If (intSource & Sign) = Sign Then
+                    result.Add("z_axis_positive")
+                Else
+                    result.Add("z_axis_negative")
+                End If
+            End If
+            If (intSource & CLICK_Y) = CLICK_Y Then
+                If (intSource & Sign) = Sign Then
+                    result.Add("y_axis_positive")
+                Else
+                    result.Add("y_axis_negative")
+                End If
+            End If
+            If (intSource & CLICK_X) = CLICK_X Then
+                If (intSource & Sign) = Sign Then
+                    result.Add("x_axis_positive")
+                Else
+                    result.Add("x_axis_negative")
+                End If
             End If
         End If
         
@@ -1745,15 +1781,15 @@ Class LIS2DH12
     End Function
     
     Public Function ConfigureSingleClickInterrupt() As Boolean
-        Return ConfigureClickInterrupt(0.05, 20.0, 0, 0, (ZS), True, 1)
+        Return ConfigureClickInterrupt(0.15, 100.0, 0, 0, (ZS), True, 1)
     End Function
     
     Public Function ConfigureDoubleClickInterrupt() As Boolean
-        Return ConfigureClickInterrupt(0.05, 20.0, 100.0, 200.0, (ZD), True, 1)
+        Return ConfigureClickInterrupt(0.15, 100.0, 40.0, 200.0, (ZD), True, 1)
     End Function
     
     Public Function ConfigureSingleDoubleClickInterrupt() As Boolean
-        Return ConfigureClickInterrupt(0.05, 20.0, 100.0, 200.0, (ZS | ZD), True, 1)
+        Return ConfigureClickInterrupt(0.15, 100.0, 40.0, 200.0, (ZS | ZD), True, 1)
     End Function
     
     '    ConfigureClickInterrupt - configures device to interrupt on clicks (currently will interupt on any enabled axis)
@@ -1797,10 +1833,13 @@ Class LIS2DH12
         
         'Set Threshold 0.0 ~ 23.622 Gs
         SetClickThreshold(threshold)
-        'Set Duration (if set to 0, causes interrupt immediately, once threshold exceeded
+        'Latch interrupt until read.
+        SetClickLatch(True)
+        'Set Duration - this sets the time that the click must end within to count - NOTE! different from normal duration
         SetClickDuration(duration)
-        SetClickLatency(latency)
-        SetClickTimeWindow(window)
+        'below two settings are double click settings only!
+        SetClickLatency(latency) 'time windo during no click will be detected after a single click
+        SetClickTimeWindow(window) ' time period during which a seond click must be detected to count (after latency)
         'Configure click interrupts (set single or double click for axes)
         SetClickConfig(click)
         
