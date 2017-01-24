@@ -241,6 +241,7 @@ if __name__ == '__main__':
     parser.add_argument('--destport', action='store',type=int, default=1883, help='destination MQTT broker port number (default: 1883)')
     parser.add_argument('--destuser', action='store',type=str, default=None, help='destination MQTT broker user name (default: None)')
     parser.add_argument('--destpassword', action='store',type=str, default=None, help='destination MQTT broker password (default: None)')
+    parser.add_argument('--destclientid', action='store',type=str, default="", help='destination MQTT broker client_id (default: "") if left blank, a random client id is assigned')
     parser.add_argument('-l','--log', action='store',type=str, default="/home/nick/Scripts/mcThings_beacon.log", help='path/name of log file (default: /home/nick/Scripts/mcThings_beacon.log)')
     parser.add_argument('-e','--echo', action='store_true', help='Echo to Console (default: True)', default = True)
     parser.add_argument('-D','--debug', action='store_true', help='debug mode', default = False)
@@ -323,7 +324,7 @@ if __name__ == '__main__':
         if destbroker != None:
             #different send broker to receive...
             log.info("Destination MQTT broker set to %s - connecting" % destbroker)
-            mqttc_dest = paho.Client()  #only used for bublishing, so minnimal callbacks!
+            mqttc_dest = paho.Client(client_id=arg.destclientid)  #only used for publishing, so minnimal callbacks!
             mqttc_dest.on_connect = on_connect_dest
             mqttc_dest.on_disconnect = on_disconnect_dest
             if arg.destuser != None:
