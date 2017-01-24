@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-__version__ = "1.0"
+__version__ = "1.2"
 '''
 Python 2.7
 Quick Program to decode UDP and MQTT beacon data from mcThings modules
@@ -11,6 +11,7 @@ gateway version GW 7-361, LPLan 7-408
 
 Nick Wateron 29th August 2016: V 1.0: Initial Release
 Nick Waterton 1st Nov 2016: V 1.1: Added Lowbattery data type
+Nick Waterton 24th jauary 2017 V1.2: Added configuration for destination MQTT broker as different from source MQTT broker (for cloud configs etc)
 '''
 
 #from __future__ import print_function  #if you want python 3 print function
@@ -151,14 +152,32 @@ def publish_data(topic, beacon_id, data_type, value, rssi):
     try:
         mqttc.publish(topic+beacon_id+"/"+data_decode[data_type], value)
         mqttc.publish(topic+beacon_id+"/Rssi", rssi)
+        if destbroker != None:
+            mqttc_dest.publish(topic+beacon_id+"/"+data_decode[data_type], value)
+            mqttc_dest.publish(topic+beacon_id+"/Rssi", rssi)
     except KeyError as e:
         pass
     
 # Define event callbacks
+def on_connect_dest(mosq, obj, rc):
+    global broker_connected_dest
+    broker_connected_dest = True
+    log.info("connected to destination broker, rc: %s" % str(rc))
+    
+def on_disconnect_dest(mqttc, obj, rc):
+    global broker_connected_dest
+    if rc != 0:
+        broker_connected_dest = False
+        log.warn("Unexpected Disconnect From destination Broker - reconnecting")
+    else:
+        log.info("Disconnected From destination Broker")
+        
+    mqttc_dest.reconnect()
+
 def on_connect(mosq, obj, rc):
     global broker_connected
     broker_connected = True
-    log.debug("connected to broker, rc: %s" % str(rc))
+    log.info("connected to broker, rc: %s" % str(rc))
     if mqtt:
         log.info("subscribing to %s%s" % (sub_topic, module))
         mqttc.subscribe(sub_topic+module, 0)
@@ -217,7 +236,11 @@ if __name__ == '__main__':
     parser.add_argument('-b','--broker', action='store',type=str, default="192.168.100.119", help='ipaddress of MQTT broker (default: 192.168.100.119)')
     parser.add_argument('-p','--port', action='store',type=int, default=1883, help='MQTT broker port number (default: 1883)')
     parser.add_argument('-U','--user', action='store',type=str, default=None, help='MQTT broker user name (default: None)')
-    parser.add_argument('-P','--password', action='store',type=str, default=None, help='uMQTT broker password (default: None)')
+    parser.add_argument('-P','--password', action='store',type=str, default=None, help='MQTT broker password (default: None)')
+    parser.add_argument('--destbroker', action='store',type=str, default=None, help='ipaddress/hostname of destination MQTT broker (default: None)')
+    parser.add_argument('--destport', action='store',type=int, default=1883, help='destination MQTT broker port number (default: 1883)')
+    parser.add_argument('--destuser', action='store',type=str, default=None, help='destination MQTT broker user name (default: None)')
+    parser.add_argument('--destpassword', action='store',type=str, default=None, help='destination MQTT broker password (default: None)')
     parser.add_argument('-l','--log', action='store',type=str, default="/home/nick/Scripts/mcThings_beacon.log", help='path/name of log file (default: /home/nick/Scripts/mcThings_beacon.log)')
     parser.add_argument('-e','--echo', action='store_true', help='Echo to Console (default: True)', default = True)
     parser.add_argument('-D','--debug', action='store_true', help='debug mode', default = False)
@@ -269,6 +292,9 @@ if __name__ == '__main__':
     broker = arg.broker
     port = arg.port
     topic = arg.topic
+    
+    destbroker = arg.destbroker #only used for publishing...
+    destport = arg.destport
 
     mqttc = paho.Client()
     # Assign event callbacks
@@ -276,7 +302,7 @@ if __name__ == '__main__':
     mqttc.on_connect = on_connect
     mqttc.on_disconnect = on_disconnect
     mqttc.on_publish = on_publish
-    mqttc.on_subscribe = on_subscribe
+    mqttc.on_subscribe = on_subscribe  
 
     if arg.debug:
         # Uncomment To enable debug messages
@@ -293,6 +319,19 @@ if __name__ == '__main__':
     except socket.error:
         log.error("Unable to connect to MQTT Broker")
         
+    try:        
+        if destbroker != None:
+            #different send broker to receive...
+            log.info("Destination MQTT broker set to %s - connecting" % destbroker)
+            mqttc_dest = paho.Client()  #only used for bublishing, so minnimal callbacks!
+            mqttc_dest.on_connect = on_connect_dest
+            mqttc_dest.on_disconnect = on_disconnect_dest
+            if arg.destuser != None:
+                mqttc_dest.username_pw_set(arg.destuser, arg.destpassword)
+            mqttc_dest.connect(destbroker, destport, 60) # Ping MQTT broker every 60 seconds if no data is published from this script. 
+    except socket.error:
+        log.error("Unable to connect to destination MQTT Broker")
+        
     try:
         print("<Cntl>C to Exit")
         
@@ -304,6 +343,8 @@ if __name__ == '__main__':
             log.info("waiting on port: %d" % port)
         
         mqttc.loop_start()
+        if destbroker != None:
+            mqttc_dest.loop_start()
         #mqttc.loop_forever()
         #rc = 0
         #while rc == 0:
@@ -325,6 +366,9 @@ if __name__ == '__main__':
     finally:
         mqttc.loop_stop()
         mqttc.disconnect()
+        if destbroker != None:
+            mqttc_dest.loop_stop()
+            mqttc_dest.disconnect()
         if udp:
             s.close()
         log.info ("Program Ended") 
