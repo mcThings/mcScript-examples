@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-__version__ = "1.2"
+__version__ = "1.21"
 '''
 Python 2.7
 Quick Program to decode UDP and MQTT beacon data from mcThings modules
@@ -11,7 +11,8 @@ gateway version GW 7-361, LPLan 7-408
 
 Nick Wateron 29th August 2016: V 1.0: Initial Release
 Nick Waterton 1st Nov 2016: V 1.1: Added Lowbattery data type
-Nick Waterton 24th jauary 2017 V1.2: Added configuration for destination MQTT broker as different from source MQTT broker (for cloud configs etc)
+Nick Waterton 24th Jauary 2017 V1.2: Added configuration for destination MQTT broker as different from source MQTT broker (for cloud configs etc)
+Nick Waterton 24th Jauary 2017 V1.21: Added protocol selection
 '''
 
 #from __future__ import print_function  #if you want python 3 print function
@@ -237,6 +238,7 @@ if __name__ == '__main__':
     parser.add_argument('-p','--port', action='store',type=int, default=1883, help='MQTT broker port number (default: 1883)')
     parser.add_argument('-U','--user', action='store',type=str, default=None, help='MQTT broker user name (default: None)')
     parser.add_argument('-P','--password', action='store',type=str, default=None, help='MQTT broker password (default: None)')
+    parser.add_argument('--protocol', action='store_true', help='protocol 3.1.1 default, 3.1 if selected', default = False)
     parser.add_argument('--destbroker', action='store',type=str, default=None, help='ipaddress/hostname of destination MQTT broker (default: None)')
     parser.add_argument('--destport', action='store',type=int, default=1883, help='destination MQTT broker port number (default: 1883)')
     parser.add_argument('--destuser', action='store',type=str, default=None, help='destination MQTT broker user name (default: None)')
@@ -251,6 +253,7 @@ if __name__ == '__main__':
       
     #----------- Global Variables -----------
     broker_connected = False
+    broker_connected_dest = False
     #-------------- Main --------------
      
     if arg.debug:
@@ -296,8 +299,15 @@ if __name__ == '__main__':
     
     destbroker = arg.destbroker #only used for publishing...
     destport = arg.destport
+    
+    if arg.protocol:
+        log.info("using old protocol 3.1")
+        mqtt_protocol=paho.MQTTv31
+    else:
+        log.info("using protocol 3.1.1")
+        mqtt_protocol=paho.MQTTv311
 
-    mqttc = paho.Client()
+    mqttc = paho.Client(protocol=mqtt_protocol)
     # Assign event callbacks
     mqttc.on_message = on_message
     mqttc.on_connect = on_connect
@@ -313,6 +323,7 @@ if __name__ == '__main__':
     #mqttc.will_set("MCThings/beacon", "Disconnected", 0, False)
     #mqttc.max_inflight_messages_set(200)    #set max inflight messages - default 20 (uses more memory)
     #mqttc.reconnect_delay_set(10, 30, True)
+    
     try:
         if arg.user != None:
             mqttc.username_pw_set(arg.user, arg.password)
@@ -324,7 +335,7 @@ if __name__ == '__main__':
         if destbroker != None:
             #different send broker to receive...
             log.info("Destination MQTT broker set to %s - connecting" % destbroker)
-            mqttc_dest = paho.Client(client_id=arg.destclientid)  #only used for publishing, so minnimal callbacks!
+            mqttc_dest = paho.Client(client_id=arg.destclientid, protocol=mqtt_protocol)  #only used for publishing, so minnimal callbacks!
             mqttc_dest.on_connect = on_connect_dest
             mqttc_dest.on_disconnect = on_disconnect_dest
             if arg.destuser != None:
