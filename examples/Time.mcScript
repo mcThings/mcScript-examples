@@ -18,6 +18,7 @@
 // see code below for arguments and return values.
 
 // N Waterton 16th January 2016 V1.0: Beta Release - First Release
+// N Waterton 26th January 2016 V1.01: Beta Release - First Release - added easy timestamp formats function
 
 
 Enum TIME_FORMAT As Byte
@@ -38,6 +39,8 @@ End Enum
 
 Class Timing
     Const VERSION As Integer = 1
+    Const MINOR_VERSION As Integer = 1
+    Const VERSION_STRING As String = "V1.01"
     
     Public Sub New()
     End Sub
@@ -108,6 +111,11 @@ Class Timing
     Shared Function GetTimestamp() As String
         'default format (milliseconds format, epoch is unix style)
         Return Timing.GetTimestamp(TIME_FORMAT.T_MILLISECONDS, -1)
+    End Function
+    
+    Shared Function GetTimestamp(format As TIME_FORMAT) As String
+        'get timestamp in different formats
+        Return Timing.GetTimestamp(format, -1)
     End Function
     
     Shared MicrosecondsOffset As Integer //Offset used by GetTimeStamp()

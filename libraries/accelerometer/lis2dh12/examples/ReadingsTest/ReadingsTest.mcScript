@@ -7,7 +7,7 @@
 // Sleep mode enabled only when interrupts are enabled (data rate is 10Hz in sleep mode) - wake time is 5 seconds (ie accelerometer wakes up for 5 sconds when threshold is exceeded).
 // Led Green = Reading/Publishing
 
-// N Waterton 22nd January 2017 V1.0: First Release
+// N Waterton 24th January 2017 V1.01: First Release
 
 
 Class LISDH12_Test
@@ -49,8 +49,9 @@ Class LISDH12_Test
     
     Shared Event Publish() RaiseEvent Every 5 Seconds
         accel.enable()
-        Dim accelValues As ListOfFloat = accel.GetAccel()
-        Dim PitchRoll As ListOfFloat = accel.GetPitchRollDegrees()
+        Dim accelValues As ListOfFloat = accel.GetAccel()               'can low pass filter these numbers also by adding filter factor (0-1.0)
+        'Dim accelValues As ListOfFloat = accel.GetAccelG()             'get values as m/s2
+        Dim PitchRoll As ListOfFloat = accel.GetPitchRollDegrees(0.5)   '(0.5) = low pass filter results to reduce noise, leave out for unfiltered data
         accel.disable() 'this sets 0Hz mode between readings, minnimum power but interrupts will not work!
         
         LedGreen = True
@@ -61,8 +62,10 @@ Class LISDH12_Test
         jData.Add("X_Accel", accelValues(0))
         jData.Add("Y_Accel", accelValues(1))
         jData.Add("Z_Accel", accelValues(2))
-        jData.Add("Pitch", PitchRoll(0))
-        jData.Add("Roll", PitchRoll(1))
+        jData.Add("Pitch", PitchRoll(0))    '+/-90 degrees
+        jData.Add("Roll", PitchRoll(1))     '+/-90 degrees
+        jData.Add("PitchAlt", PitchRoll(2)) '0-360 degrees
+        jData.Add("RollAlt", PitchRoll(3))  '0-360 degrees
         MQTT.Publish("Data", jData)
         
     End Event

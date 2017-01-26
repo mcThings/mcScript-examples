@@ -7,8 +7,8 @@
     <DocumentSetting>
       <Name>OrientationTest</Name>
       <FileSpec>OrientationTest.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
+      <Row>159</Row>
+      <Col>9</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
@@ -21,13 +21,6 @@
     <DocumentSetting>
       <Name>LIS2DH12</Name>
       <FileSpec>..\..\Examples\LIS2DH12.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
-      <BreakPointLineNumbers />
-    </DocumentSetting>
-    <DocumentSetting>
-      <Name>[Listing]</Name>
-      <FileSpec>OrientationTest.lst</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />

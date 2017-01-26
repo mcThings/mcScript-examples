@@ -2,13 +2,13 @@
 <ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ProjectName>OrientationTest2</ProjectName>
   <DeviceType>mcMod120</DeviceType>
-  <LastDocumentName>..\..\Examples\LIS2DH12.mcScript</LastDocumentName>
+  <LastDocumentName>OrientationTest2.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
-      <Name>OrientationTest2</Name>
+      <Name>OrientationTest2*</Name>
       <FileSpec>OrientationTest2.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
+      <Row>165</Row>
+      <Col>9</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
@@ -26,5 +26,5 @@
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>
-  <ManualCompile>false</ManualCompile>
+  <ManualCompile>true</ManualCompile>
 </ProjectSetting>

@@ -1,19 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <ProjectName>TransientTest</ProjectName>
+  <ProjectName>EndMotionTest</ProjectName>
   <DeviceType>mcMod120</DeviceType>
-  <LastDocumentName>TransientTest.mcScript</LastDocumentName>
+  <LastDocumentName>..\..\Examples\LIS2DH12.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
-      <Name>TransientTest</Name>
-      <FileSpec>TransientTest.mcScript</FileSpec>
-      <Row>131</Row>
-      <Col>9</Col>
+      <Name>EndMotionTest</Name>
+      <FileSpec>EndMotionTest.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
       <Name>MQTT</Name>
       <FileSpec>..\..\Examples\MQTT.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>Time</Name>
+      <FileSpec>..\..\Examples\Time.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
@@ -26,5 +33,5 @@
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>
-  <ManualCompile>true</ManualCompile>
+  <ManualCompile>false</ManualCompile>
 </ProjectSetting>

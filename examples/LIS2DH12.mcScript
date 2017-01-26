@@ -10,7 +10,7 @@
 // N Waterton 22nd January 2017 V1.5: First Release - Massive re-write NOTE: Could be breaking changes!
 // N Waterton 23rd January 2017 V1.51: First Release - Minor mods to interrupt feedback functions, plus one bug fix (enable interrupts)
 // N Waterton 24th January 2017 V1.52: First Release - Minor mods to click interrupt feedback functions
-
+// N Waterton 25th January 2017 V1.53: First Release - New functions for pitch/roll, low pass filter etc.
 
 // All functions except FIFO supported.
 // eg: motion, transient, freefall, orientation, click (double or single)
@@ -19,6 +19,7 @@
 // pin 1 = AccelerometerInt1()
 // pin 2 = AccelerometerInt2()
 // easy read functions for all above modes
+// Modes: Low Power = 8 bit, Normal = 10 bit, High Resolution = 12 bit
 // Temperature sensor is fairly useless, use it at your own risk!
 // NOTE: The on board temp sensor only measures varience against a reference temperature (temp_reference default 25)
 //       which you would have to calibrate in order to get an absolute temperature. Resolution is 1 deg C
@@ -27,8 +28,8 @@
 Class LIS2DH12
     'Constants
     Const VERSION As Integer = 5
-    Const MINOR_VERSION As Integer = 2
-    Const VERSION_STRING As String = "V1.52"
+    Const MINOR_VERSION As Integer = 3
+    Const VERSION_STRING As String = "V1.53"
     
     'I2C constants
     Const LIS2DH12_I2C_ADDR As Byte = 0x19
@@ -401,6 +402,20 @@ Class LIS2DH12
         Return Read(STATUS)
     End Function
     
+    Public Function NewDataAvailable() As Boolean
+        'returns if new x,y or z data is available (or data overrun)
+        'ZYXOR X-, Y- and Z-axis data overrun. Default value: 0
+        '(0: no overrun has occurred; 1: a new set of data has overwritten the previous set)
+        'ZOR Z-axis data overrun. Default value: 0
+        'YOR Y-axis data overrun. Default value: 0
+        'XOR X-axis data overrun. Default value: 0
+        'ZYXDA X-, Y- and Z-axis new data available. Default value: 0
+        '(0: a new set of data is not yet available; 1: a new set of data is available)
+        'ZDA Z-axis new data available. Default value: 0
+        'YDA Y-axis new data available. Default value: 0
+        'XDA Y-axis new data available. Default value: 0
+        Return (Read(STATUS) & (ZYXDA | ZYXOR)).ToBoolean
+    End Function
     
     Public Sub EnableAxis(axis As Byte)
         //x=0,y=1,z=3 to enable axis
@@ -509,6 +524,29 @@ Class LIS2DH12
         Return NORMAL_MODE
     End Function
     
+    Public Function GetResolution() As Byte
+        'Get number of bits of resolution for the current mode
+        'modes are high-resolution mode, normal mode and low-power mode.
+        '                                          LP( ctlreg1[3] HR ctlreg4[3]
+        'Low-power mode (8-bit data output)        1              0 
+        'Normal mode    (10-bit data output)       0              0
+        'High-resolution mode (12-bit data output) 0              1
+        
+        Dim mode As Byte = GetMode()
+        Dim HRbit As Boolean = (Read(CTRL_REG4) & HR_BIT).ToBoolean// read bit 3,  HR mode
+        
+        Select mode
+            Case LOW_POWER_MODE
+                Return 8
+            Case NORMAL_MODE
+                Return 10
+            Case HIGH_RESOLUTION_MODE
+                Return 12
+            Case Else
+                Return 1
+        End Select
+    End Function
+    
     Public Sub SetDataRate(rate As Byte)
         'Set Data Rate, bits 4,5,6,7
         'Data rate selection. Default value: 0000
@@ -573,6 +611,22 @@ Class LIS2DH12
         'Full-scale selection. Default value: 00
         '(00: ±2g; 01: ±4g; 10: ±8g; 11: ±16g)
         Return ((Read(CTRL_REG4) & SCALE_MASK) >> 4)
+    End Function
+    
+    Public Function GetScaleAsFloat() As Float
+        'Get Scale as G value
+        Dim scale As Byte = GetScale()
+        Dim Result As Float
+        If (scale & SCALE_2G) = SCALE_2G Then
+            Result = 2.0
+        ElseIf (scale & SCALE_4G) = SCALE_4G Then
+            Result = 4.0
+        ElseIf (scale & SCALE_8G) = SCALE_8G Then
+            Result = 8.0
+        ElseIf (scale & SCALE_16G) = SCALE_16G Then
+            Result = 16.0
+        End If
+        Return Result
     End Function
     
     Public Sub SetBlockData(block As Byte)
@@ -1928,53 +1982,147 @@ Class LIS2DH12
         
     End Function
     
-    'GetPitchRoll - returns the pitch and roll in Radians NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    'GetAccelLowPassFilter - returns the acceleration data for x,y,z low pass filtered by factor alpha
+    'uses global Public values x,y,x_filtered
+    'Alpha - smoothing factor in range 0.0-1.0
+    '
+    'Returns:
+    'returns the filtered x,y,z values As ListOfFloat
+    Public x_filtered As Float
+    Public y_filtered As Float
+    Public z_filtered As Float
+    
+    Public Function GetAccelLowPassFilter(alpha As Float) As ListOfFloat
+        If alpha > 1.0 Then
+            alpha = 1.0
+        ElseIf alpha <= 0 Then
+            alpha = 0.1
+        End If
+        
+        Dim result As ListOfFloat = New ListOfFloat
+        Dim accelValues As ListOfFloat = GetAccel()
+        
+        //Low Pass Filter
+        x_filtered = accelValues(0) * alpha + (x_filtered * (1.0 - alpha))
+        y_filtered = accelValues(1) * alpha + (y_filtered * (1.0 - alpha))
+        z_filtered = accelValues(2) * alpha + (z_filtered * (1.0 - alpha))
+        
+        result.Add(x_filtered)
+        result.Add(y_filtered)
+        result.Add(z_filtered)
+        Return result
+    End Function
+    
+    Public Function atan2(y As Float, x As Float) As Float
+        'If no errors occur, the arc tangent of y/x (arctan(y/x)) in the range [0,2π] radians, is returned
+        Dim result As Float
+        result = (y / x).ATan()
+        If x < 0 Then
+            result += Float.Pi
+        Else
+            If y < 0 Then
+                result += 2 * Float.Pi
+            End If
+        End If
+        Return result
+    End Function
+    
+    Public Function GetPitchRoll() As ListOfFloat
+        'get unfiltered pitch and roll values
+        Return GetPitchRoll(1.0)
+    End Function
+    
+    'GetPitchRoll - returns the pitch and roll in Radians
     '
     'Returns:
     'returns the pitch and roll in radians As ListOfFloat
-    Public Function GetPitchRoll() As ListOfFloat
+    'NOTE: returns pitch/roll as +/90 degrees values, and as 0-360 degrees values
+    '      return(0)-(1) = +/- 90, (2)-(3) = 0-360
+    Public Function GetPitchRoll(alpha As Float) As ListOfFloat
         'get pitch and roll in Radians
         'need all three axes enabled for this calculation
-        'from ST Application Note D026445 Rev 1 No idea if this works
-        If GetDataRate() = DATA_RATE_POWER_DOWN Then 'setup not run, set some defaults
-            Setup(LOW_POWER_MODE, DATA_RATE_50HZ, SCALE_2G)
-        End If
+        'from ST Application Note D026445 Rev 1
+        'also roll  = atan2(Ax,Az)  * RAD_TO_DEG
+        '     pitch = atan2(Ay,Az)  * RAD_TO_DEG
         
         Dim result As ListOfFloat = New ListOfFloat
         Dim Pitch As Float = Float.NaN
         Dim Roll As Float = Float.NaN
-        Dim accelValues As ListOfFloat = GetAccel()
+        Dim Pitch1 As Float = Float.NaN
+        Dim Roll1 As Float = Float.NaN
+        Dim accelValues As ListOfFloat = GetAccelLowPassFilter(alpha)
         
         If accelValues <> Nothing Then
             Pitch = (accelValues(0) / (accelValues(1).Pow(2.0) + accelValues(2).Pow(2.0)).Sqrt()).ATan()
-            Roll = (accelValues(1) / (accelValues(0).Pow(2.0) + accelValues(2).Pow(2.0)).Sqrt()).ATan() 
+            Roll = (accelValues(1) / (accelValues(0).Pow(2.0) + accelValues(2).Pow(2.0)).Sqrt()).ATan() 'gives same values as below
+            'Pitch = (accelValues(0) / accelValues(2)).ATan()
+            'Roll = (accelValues(1) / accelValues(2)).ATan()
+            Pitch1 = atan2(accelValues(0), accelValues(2))
+            'Roll1 = atan2(accelValues(1), (accelValues(1).Pow(2.0) + accelValues(2).Pow(2.0)).Sqrt())
+            Roll1 = atan2(accelValues(1), accelValues(2))
         End If
         result.Add(Pitch)
         result.Add(Roll)
+        result.Add(Pitch1)
+        result.Add(Roll1)
         Return result
     End Function
     
-    'GetPitchRoll - returns the pitch and roll in degrees NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
-    '
+    Public Function GetPitchRollDegrees() As ListOfFloat
+        'get unfiltered pitch and roll values in degrees
+        Return GetPitchRollDegrees(1.0)
+    End Function
+    
+    'GetPitchRoll - returns the pitch and roll in degrees
     'Returns:
     'returns the pitch and roll in degrees As ListOfFloat
-    Public Function GetPitchRollDegrees() As ListOfFloat
+    Public Function GetPitchRollDegrees(alpha As Float) As ListOfFloat
         Dim result As ListOfFloat = New ListOfFloat
-        Dim PitchRoll As ListOfFloat = GetPitchRoll()
+        Dim PitchRoll As ListOfFloat = GetPitchRoll(alpha)
         Dim Pitch As Float = Float.NaN
         Dim Roll As Float = Float.NaN
-        If PitchRoll(0) <> Float.NaN Then
-            Pitch = PitchRoll(0) * (180.0 / Float.Pi)
-        End If
-        If PitchRoll(1) <> Float.NaN Then
-            Roll = PitchRoll(1) * (180.0 / Float.Pi)
-        End If
-        result.Add(Pitch)
-        result.Add(Roll)
+        Dim RollAlt As Float = Float.NaN
+        
+        For Each angle In PitchRoll
+            Dim degreees As Float = Float.NaN
+            If angle <> Float.NaN Then
+                degreees = angle * (180.0 / Float.Pi)
+            End If
+            result.Add(degreees)
+        Next
+        
         Return result
     End Function
     
-    'GetAccel - returns the acceleration of all axis NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
+    Public Function GetAccelG() As ListOfFloat
+        'get x,y,z accel data as G
+        Return GetAccelG(1.0)
+    End Function
+    
+    Public Function GetAccelG(alpha As Float) As ListOfFloat
+        'get x,y,z accel data low pass filtered as G
+        Dim accelValues As ListOfFloat = GetAccelLowPassFilter(alpha)
+        Dim gravity As Float = 9.81 '(aprox m/s2)
+        Dim Result As ListOfFloat = New ListOfFloat
+        
+        Dim xG As Float = accelValues(0) * gravity
+        Dim yG As Float = accelValues(1) * gravity
+        Dim zG As Float = accelValues(2) * gravity
+        
+        Result.Add(xG)
+        Result.Add(yG)
+        Result.Add(zG)
+        
+        Return Result
+    End Function
+    
+    Public Function GetAccel(alpha As Float) As ListOfFloat
+        'get x,y,z accel data low pass filtered
+        Return GetAccelLowPassFilter(alpha)
+    End Function
+    
+    'GetAccel - returns the acceleration of all axis
+    'NOTE: Setup() MUST BE RUN PRIOR TO CALLING THIS FUNCTION
     '
     'Returns:
     'returns the acceleration value in Gs As ListOfFloat

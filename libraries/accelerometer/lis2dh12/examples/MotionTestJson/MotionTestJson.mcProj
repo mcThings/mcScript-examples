@@ -21,8 +21,8 @@
     <DocumentSetting>
       <Name>LIS2DH12</Name>
       <FileSpec>..\..\Examples\LIS2DH12.mcScript</FileSpec>
-      <Row>1043</Row>
-      <Col>54</Col>
+      <Row>0</Row>
+      <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>
