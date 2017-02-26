@@ -15,10 +15,19 @@
 // GetTimeSpan()
 // GetTimestamp()
 
+// millis class adds millis and micros functions, similar to those found on Arduino, with reset to 0 functions
+// you can create as many milli and micro timers as you like.
+// eg: Dim milli1 as milli = new milli
+//     milli1.Resetmillis() //reset timer to 0 (it is created at 0)
+//     Dim elapsed_time  = milli1.millis()   //number of milliseconds elapsed since milli reset/creation
+//     Dim elapsed_time2 = milli1.micros()   //number of microseconds elapsed since micro reset/creation
+// Note: these will overflow and wrap arround eventually, unless reset.
+
 // see code below for arguments and return values.
 
 // N Waterton 16th January 2016 V1.0: Beta Release - First Release
 // N Waterton 26th January 2016 V1.01: Beta Release - First Release - added easy timestamp formats function
+// N Waterton 10th February 2017 V1.1: Beta Release - Added millis class with Millis and Micros functions
 
 
 Enum TIME_FORMAT As Byte
@@ -37,10 +46,54 @@ Enum TIME_FORMAT As Byte
     T_SECONDS_MICROSECONDS = 6
 End Enum
 
+Class millis
+    
+    Public millis1 As Timing = New Timing
+    Public micros1 As Timing = New Timing
+    Public previousMillis As Integer
+    Public previousMicros As Integer
+    
+    Public Sub New()
+        millis1.GetTimeSpan() //set millis timer to 0
+        micros1.GetTimeSpan(True) //set micros timer to 0
+    End Sub
+    
+    Public Function millis() As Integer
+        Dim offset As Integer = millis1.GetTimeSpan()
+        If offset < 0 Or previousMillis >= Integer.MaxValue - offset Or offset = Integer.MaxValue Then //overflow
+            previousMillis = 0
+        Else
+            previousMillis += offset
+        End If
+        Return previousMillis 
+    End Function
+    
+    Public Sub Resetmillis()
+        previousMillis = 0
+        millis1.GetTimeSpan() //set millis timer to 0
+    End Sub
+    
+    Public Function micros() As Integer
+        Dim offset As Integer = micros1.GetTimeSpan(True)
+        If offset < 0 Or previousMicros >= Integer.MaxValue - offset Or offset = Integer.MaxValue Then //overflow
+            previousMicros = 0
+        Else
+            previousMicros += offset
+        End If
+        Return previousMicros 
+    End Function
+    
+    Public Sub Resetmicros()
+        previousMicros = 0
+        micros1.GetTimeSpan(True) //set micros timer to 0
+    End Sub
+    
+End Class
+
 Class Timing
     Const VERSION As Integer = 1
     Const MINOR_VERSION As Integer = 1
-    Const VERSION_STRING As String = "V1.01"
+    Const VERSION_STRING As String = "V1.1"
     
     Public Sub New()
     End Sub
