@@ -142,7 +142,7 @@ Class Timing
         
         Dim current_timestamp_string As String = Timing.GetTimestamp(TIME_FORMAT.T_MICROSECONDS, offset)
         If Not Integer.TryConvert(current_timestamp_string, current_timestamp) Then
-            MQTT.Publish("Status", "GetTimeSpan(): Overflow")
+            'MQTT.Publish("Status", "GetTimeSpan(): Overflow")
             current_timestamp = 0
             MicrosecondsTimespan = 0
         End If
