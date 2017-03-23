@@ -1,0 +1,27 @@
+﻿Class LISDH12_Test
+    Shared accel As LIS2DH12 
+    
+    Shared Event Boot()
+        accel = New LIS2DH12
+        
+        'set accelerometer to cause interrupt if accelation is > 1.15Gs for longer than 2ms (any axis)
+        accel.ConfigureShockInterrupt(1.15, 2.0)
+    End Event
+    
+    Shared Event AccelerometerInt1()
+        'debounce interrupt
+        Thread.Sleep(100000)
+        Thread.ClearHardwareEvent()
+        
+        'Read Int source register to clear interrupt
+        If ((accel.GetINT1ActiveInterrupt() & LIS2DH12.INT_ACTIVE) = LIS2DH12.INT_ACTIVE) Then
+            'interrupt generated
+            
+            LedRed = Not LedRed
+            
+        End If 
+        
+        'restart interrupt       
+        accel.SetINT1ActiveInterrupt(LIS2DH12.INT_SRC_XH | LIS2DH12.INT_SRC_YH | LIS2DH12.INT_SRC_ZH)
+    End Event
+End Class    

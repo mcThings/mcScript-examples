@@ -1,0 +1,37 @@
+﻿//
+// This example publishes the Uptime, Battery Voltage and Temperature once per minute
+// Data also is published in the beacon data fields. This can be read via MQTT.
+// Must include TempSensor and MQTT Library
+//
+
+Class Main
+    
+    Shared data As dataType
+    
+    Shared Event Publish() RaiseEvent Every 1 Minutes
+        LedGreen = True
+        
+        Select data
+            Case dataType.UPTIME
+                Dim Uptime As Integer = Device.Uptime()
+                MQTT.Publish("Uptime", Uptime)
+                MQTT.BeaconPublish(dataType.UPTIME, Uptime)
+                data = dataType.BATTVOLTAGE
+            Case dataType.BATTVOLTAGE
+                Dim BattVolt As Integer = Device.BatteryVoltage()
+                MQTT.Publish("BatteryVoltage", BattVolt)
+                MQTT.BeaconPublish(dataType.BATTVOLTAGE, BattVolt)
+                data = dataType.TEMPERATURE
+            Case dataType.TEMPERATURE
+                Dim TempC As Float = TempSensor.GetTemp
+                MQTT.Publish("Temperature", TempC)
+                MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
+                data = dataType.UPTIME
+            Case Else
+                MQTT.Publish("Status", "OnLine")
+                data = dataType.UPTIME
+        End Select
+        LedGreen = False
+    End Event  
+End Class
+

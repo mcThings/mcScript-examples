@@ -1,0 +1,876 @@
+﻿// Class to handle BME280 Temp/humidity/Pressure Sensor for mcThings modules.
+// Feel free to copy and use as you wish
+// Loosely based on the Adafruit library --> http://www.adafruit.com/products/2650
+// Requires (and Tested on) mcThings module 110 V 7-369
+// N Waterton, 1st September 2016 V 1.0: Initial Release
+
+// Contains Functions:
+//  readTemperature()           //returns temperature in degrees C As Float
+//  readTemperatureF)           //returns temperature in degrees F As Float
+//  readHumidity()              //returns relative humidity in % As Float
+//  readPressure()              //returns baryometric pressure in hPa (mB) 
+//  readAltitude(seaLevel)      //returns altitude in meters for given Mean Sealevel Pressure As Float
+//  readAltitude()              //returns altitude in meters for default MSL of 1013.25 hPa As Float
+//  readAltitudeFeet(seaLevel)  //returns altitude in feet for given Mean Sealevel Pressure As Float
+//  readAltitudeFeet()          //returns altitude in feet for default MSL of 1013.25 hPa As Float
+//  readAproxDewPoint()         //returns aprox dew point in degrees C using simple formula As Float
+//  readDewPoint()              //returns accurate dew point in degrees C As Float
+//  readAlternateDewPoint()     //returns accurate dew point using alternate constants in degrees C As Float
+
+// Control functions to set/get sampling, mode, filtering, etc. read the comments for details.
+// Default mode is Temp 16X, Pressure 16x, humidity 1x, no filtering, read-on-demand (FORCED mode). This is the lowest power mode.
+// If free running mode is used (NORMAL mode), default reading interval is set to 1000ms (this is the maximum).
+// See Sub New() for default settings.
+
+Class BME280
+    // Class To handle BME280 temperature/humidity/pressure BME280_I2C via I2C
+    //Supply voltage VDD main supply voltage range: 1.71 V to 3.6 V
+    //VDDIO interface voltage range: 1.2 V to 3.6 V
+    //Current consumption 1.8 μA @ 1 Hz humidity and temperature
+    //2.8 μA @ 1 Hz pressure and temperature
+    //3.6 μA @ 1 Hz humidity, pressure and temperature
+    //0.1 μA in sleep mode
+    
+    Const version As String = "1.0"
+    
+    //Registers
+    Const REGISTER_DIG_T1 As Byte = 0x88
+    Const REGISTER_DIG_T2 As Byte = 0x8a
+    Const REGISTER_DIG_T3 As Byte = 0x8c
+    
+    Const REGISTER_DIG_P1 As Byte = 0x8e
+    Const REGISTER_DIG_P2 As Byte = 0x90
+    Const REGISTER_DIG_P3 As Byte = 0x92
+    Const REGISTER_DIG_P4 As Byte = 0x94
+    Const REGISTER_DIG_P5 As Byte = 0x96
+    Const REGISTER_DIG_P6 As Byte = 0x98
+    Const REGISTER_DIG_P7 As Byte = 0x9a
+    Const REGISTER_DIG_P8 As Byte = 0x9c
+    Const REGISTER_DIG_P9 As Byte = 0x9e
+    
+    Const REGISTER_DIG_H1 As Byte = 0xa1
+    Const REGISTER_DIG_H2 As Byte = 0xe1
+    Const REGISTER_DIG_H3 As Byte = 0xe3
+    Const REGISTER_DIG_H4 As Byte = 0xe4
+    Const REGISTER_DIG_H5 As Byte = 0xe5
+    Const REGISTER_DIG_H6 As Byte = 0xe7
+    
+    Const REGISTER_CHIPID As Byte = 0xd0
+    Const REGISTER_VERSION As Byte = 0xd1
+    Const REGISTER_SOFTRESET As Byte = 0xe0
+    
+    Const REGISTER_CAL26 As Byte = 0xe1 // R calibration stored in 0xE1-0xF0
+    
+    Const REGISTER_CONTROLHUMID As Byte = 0xf2
+    Const REGISTER_STATUS As Byte = 0xf3
+    Const REGISTER_CONTROL As Byte = 0xf4
+    Const REGISTER_CONFIG As Byte = 0xf5
+    Const REGISTER_PRESSUREDATA As Byte = 0xf7
+    Const REGISTER_TEMPDATA As Byte = 0xfa
+    Const REGISTER_HUMIDDATA As Byte = 0xfd
+    
+    //mode Constants
+    Const SLEEP As Byte = 0x00
+    Const FORCED As Byte = 0x01
+    Const NORMAL As Byte = 0x03
+    
+    //Sampling Constanats
+    Const SAMPLING_0 As Byte = 0x00
+    Const SAMPLING_1 As Byte = 0x01
+    Const SAMPLING_2 As Byte = 0x02
+    Const SAMPLING_4 As Byte = 0x03
+    Const SAMPLING_8 As Byte = 0x04
+    Const SAMPLING_16 As Byte = 0x05
+    
+    //IIR Sampling Constanats
+    Const IIR_SAMPLING_0 As Byte = 0x00
+    Const IIR_SAMPLING_2 As Byte = 0x01
+    Const IIR_SAMPLING_4 As Byte = 0x02
+    Const IIR_SAMPLING_8 As Byte = 0x03
+    Const IIR_SAMPLING_16 As Byte = 0x04
+    
+    //Factory Calibration Factors (Typical Values) (Spakfun typical values)
+    //SpakFun Typical values found here: https://learn.sparkfun.com/tutorials/sparkfun-bme280-breakout-hookup-guide#res
+    Public dig_T1 As Integer //converted from unsigned Short  (28224)   (27974)     uint16
+    Public dig_T2 As Integer //was Short                      (26762)   (26594)     int16
+    Public dig_T3 As Integer //was Short                      (50)      (50)        int16
+    
+    
+    Public dig_P1 As Integer //converted from unsigned Short  (37424)   (38207)     uint16
+    Public dig_P2 As Integer //was Short                      (-10666)  (-10702)    int16
+    Public dig_P3 As Integer //was Short                      (3024)    (3024)      int16
+    Public dig_P4 As Integer //was Short                      (8136)    (7917)      int16
+    Public dig_P5 As Integer //was Short                      (-21)     (-118)      int16
+    Public dig_P6 As Integer //was Short                      (-7)      (-7)        int16
+    Public dig_P7 As Integer //was Short                      (9900)    (9900)      int16
+    Public dig_P8 As Integer //was Short                      (-10230)  (-10230)    int16
+    Public dig_P9 As Integer //was Short                      (4285)    (4285)      int16
+    
+    Public dig_H1 As Integer //was Byte                       (75)      (75)        uint8
+    Public dig_H2 As Integer //was Short                      (353)     (358)       int16
+    Public dig_H3 As Integer //was Byte                       (0)       (0)         uint8
+    Public dig_H4 As Integer //was Short                      (340)     (328)       int16
+    Public dig_H5 As Integer //was Short                      (0)       (0)         int16
+    Public dig_H6 As Integer //converted from signed Byte     (30)      (30)        uint8
+    
+    //raw values as read by readall()
+    Public temperature_raw As Integer
+    Public pressure_raw As Integer
+    Public humidity_raw As Integer
+    
+    // Time to take sample, stored so that we don;t have to keep reading the I2C bus
+    Public sample_time As Integer = 0
+    
+    //sensor mode
+    Public normal_mode As Boolean = True
+    
+    //sample rate
+    Public sample_filter_rate As Byte = 0xa0
+    
+    //humidity oversampling
+    Public hum_oversample As Byte = 0x05
+    
+    //Temperature and Pressure oversampling
+    Public temp_press_oversample As Byte = 0xb7
+    
+    //Ambient Temperature adjustment, used in Humidity and Pressure calculations
+    Public t_fine As Integer
+    
+    //I2c device for BME280_I2C
+    Public BME280_I2C As I2c
+    
+    //Set devices status as online or not
+    Public online As Boolean = False
+    
+    Public Sub New()
+        BME280_I2C = I2c.Create(400000, Pin.SCL, Pin.SDA, 0x77) //0x77 is I2C address
+        Reset()
+        Thread.Sleep(25000) // wait 25mS for module to come online
+        
+        Dim chipid As Byte = getChipID()
+        
+        If chipid = 0x60 Then
+            online = True
+            readCoefficients() //load calibration factors
+            // Set Humidity oversampling before Mode (DS 5.4.3) - setMode will do this automatically
+            // more sampling = more time/current but better accuracy
+            // Setting oversampling to 0 disables the sensor! retun value is then always 0x8000
+            // Valid settings are 0,1,2,4,6,8,16
+            setHumiditysamplingValue(1)
+            setTemperaturesamplingValue(16)
+            setPressuresamplingValue(16)
+            setIIRfilterValue(0) //(temp and press only) more filtering reduces transients, but increases time/current consumption
+            setSamplerateValue(1000) //sample every 1000mS (only in NORMAL mode)
+            //setMode(NORMAL) //Free running mode (continuous sampling at SampleRate)
+            setMode(FORCED) //only take samples when commanded
+        End If
+    End Sub
+    
+    Public Function getChipID() As Byte
+        //ChipID should be 0x60 (96 decimal)
+        Return read8(REGISTER_CHIPID).ToByte()
+    End Function
+    
+    Public Function getVersion() As Byte
+        Return read8(REGISTER_VERSION).ToByte()
+    End Function
+    
+    Public Function getStatus() As Byte
+        Return read8(REGISTER_STATUS).ToByte() //bit 3 = measuring, bit 0 = updating
+    End Function
+    
+    Public Function measuring() As Boolean
+        Return (read8(REGISTER_STATUS).ToByte() & 0x04).ToBoolean() //bit 3 = measuring, bit 0 = updating
+    End Function
+    
+    Public Function updating() As Boolean
+        Return (read8(REGISTER_STATUS).ToByte() & 0x01).ToBoolean() //bit 3 = measuring, bit 0 = updating
+    End Function
+    
+    Public Sub Reset()
+        write8(REGISTER_SOFTRESET, 0xb6)
+        Thread.Sleep(25000) // wait 25mS for module to come online
+    End Sub
+    
+    Public Function getSampleValueAsByte(sample As Byte) As Byte
+        'converts sampling rate (0-16) as Byte value
+        Dim Value As Byte
+        Select sample
+            Case 0
+                Value = SAMPLING_0
+            Case 1
+                Value = SAMPLING_1
+            Case 2
+                Value = SAMPLING_2
+            Case 4
+                Value = SAMPLING_4
+            Case 8
+                Value = SAMPLING_8
+            Case Else
+                Value = SAMPLING_16
+        End Select
+        Return Value
+    End Function
+    
+    Public Function getSampleByteAsValue(value As Byte) As Byte
+        'converts sampling rate Byte value into actual value (0-16)
+        Select value
+            Case SAMPLING_0
+                Return 0
+            Case SAMPLING_1
+                Return 1
+            Case SAMPLING_2
+                Return 2
+            Case SAMPLING_4
+                Return 4
+            Case SAMPLING_8
+                Return 8
+            Case SAMPLING_16
+                Return 16
+            Case Else
+                Return 16
+        End Select
+    End Function
+    
+    Public Sub setHumiditysampling(set_hum_oversample As Byte)
+        //Controls oversampling of humidity data.
+        //000 Skipped (output set to 0x8000)
+        //001 oversampling ×1 (0x01)
+        //010 oversampling ×2 (0x02)
+        //011 oversampling ×4 (0x03)
+        //100 oversampling ×8 (0x04)
+        //101, others oversampling ×16 (default 0x05)
+        sample_time = 0 //reset sample_time so that we calcuate it again
+        If set_hum_oversample > 0x05 Then
+            set_hum_oversample = 0x05
+        End If
+        hum_oversample = set_hum_oversample
+        write8(REGISTER_CONTROLHUMID, hum_oversample)
+        write8(REGISTER_CONFIG, sample_filter_rate)
+        write8(REGISTER_CONTROL, temp_press_oversample)
+    End Sub
+    
+    Public Sub setHumiditysamplingValue(set_hum_oversample As Byte)
+        'value as 0-16 times
+        Dim Value As Byte = getSampleValueAsByte(set_hum_oversample)
+        setHumiditysampling(Value)
+    End Sub
+    
+    Public Function getHumiditysamplingValue() As Integer
+        //returns current humidity sampling value (not byte)
+        Return getSampleByteAsValue(hum_oversample)
+    End Function
+    
+    Public Sub setTemperaturesampling(set_temp_oversample As Byte)
+        //Controls oversampling of Temperature data. bits 7,6,5
+        //000 Skipped (output set to 0x8000)
+        //001 oversampling ×1 (0x01)
+        //010 oversampling ×2 (0x02)
+        //011 oversampling ×4 (0x03)
+        //100 oversampling ×8 (0x04)
+        //101, others oversampling ×16 (default 0x05)
+        sample_time = 0 //reset sample_time so that we calcuate it again
+        If set_temp_oversample > 0x05 Then
+            set_temp_oversample = 0x05
+        End If
+        temp_press_oversample = (set_temp_oversample << 5) | (temp_press_oversample & 0x1f)
+        write8(REGISTER_CONFIG, sample_filter_rate)
+        write8(REGISTER_CONTROL, temp_press_oversample)
+    End Sub
+    
+    Public Sub setTemperaturesamplingValue(set_temp_oversample As Byte)
+        'value as 0-16 times
+        Dim Value As Byte = getSampleValueAsByte(set_temp_oversample)
+        setTemperaturesampling(Value)
+    End Sub
+    
+    Public Function getTemperaturesamplingValue() As Integer
+        //returns current temperature sampling value (not byte)
+        Return getSampleByteAsValue((temp_press_oversample >> 5) & 0x07)
+    End Function
+    
+    Public Sub setPressuresampling(set_press_oversample As Byte)
+        //Controls oversampling of Temperature data. bits 4,3,2
+        //000 Skipped (output set to 0x8000)
+        //001 oversampling ×1 (0x01)
+        //010 oversampling ×2 (0x02)
+        //011 oversampling ×4 (0x03)
+        //100 oversampling ×8 (0x04)
+        //101, others oversampling ×16 (default 0x05)
+        sample_time = 0 //reset sample_time so that we calcuate it again
+        If set_press_oversample > 0x05 Then
+            set_press_oversample = 0x05
+        End If
+        temp_press_oversample = (set_press_oversample << 2) | (temp_press_oversample & 0xe3)
+        write8(REGISTER_CONFIG, sample_filter_rate)
+        write8(REGISTER_CONTROL, temp_press_oversample)
+    End Sub
+    
+    Public Sub setPressuresamplingValue(set_press_oversample As Byte)
+        'value as 0-16 times
+        Dim Value As Byte = getSampleValueAsByte(set_press_oversample)
+        setPressuresampling(Value)
+    End Sub
+    
+    Public Function getPressuresamplingValue() As Integer
+        //returns current pressure sampling value (not byte)
+        Return getSampleByteAsValue((temp_press_oversample) >> 2 & 0x07)
+    End Function
+    
+    Public Sub setMode(set_mode As Byte)
+        // Normal Mode is free running, sampling at sample rate (usually 1/sec)
+        // Forced mode is one sample at request. This is minnimum power mode
+        // Sleep Mode is no readings (registers are available though)
+        
+        //From Data Sheet:
+        //The BME280 offers three sensor modes: sleep mode, forced mode and normal mode. These
+        //can be selected using the mode[1:0] setting (see chapter 5.4.5). The available modes are:
+        //* Sleep mode: no operation, all registers accessible, lowest power, selected after startup
+        //* Forced mode: perform one measurement, store results and return to sleep mode
+        //* Normal mode: perpetual cycling of measurements and inactive periods.
+        //The modes will be explained in detail in chapters 3.3.2 (sleep mode), 3.3.3 (forced mode) and
+        //3.3.4 (normal mode).
+        
+        //00 Sleep
+        //01 Forced (0x01)
+        //10 Forced (0x02)
+        //11 Normal (0x03)
+        sample_time = 0 //reset sample_time so that we calcuate it again
+        If set_mode >= 0x03 Then
+            normal_mode = True
+            set_mode = 0x03
+        Else
+            normal_mode = False
+        End If
+        temp_press_oversample = set_mode | (temp_press_oversample & 0xfc)
+        write8(REGISTER_CONFIG, sample_filter_rate)
+        write8(REGISTER_CONTROL, temp_press_oversample)
+    End Sub
+    
+    Public Function getMode() As Byte
+        //returns current mode
+        Return temp_press_oversample & 0x03
+    End Function
+    
+    Public Sub setSamplerate(set_sample_rate As Byte)
+        //Controls inactive duration (standby) in normal mode. bits 7,6,5
+        //000 0.5mS  (0x00)
+        //001 62.5mS (0x01)
+        //010 125mS  (0x02)
+        //011 250mS  (0x03)
+        //100 500mS  (0x04)
+        //101 1000mS (default 0x05)
+        //110 10mS   (0x06)
+        //111 20mS    (0x07)
+        
+        If set_sample_rate > 0x07 Then
+            set_sample_rate = 0x07
+        End If
+        sample_filter_rate = (set_sample_rate << 5) | (sample_filter_rate & 0x1f)
+        write8(REGISTER_CONFIG, sample_filter_rate)
+        write8(REGISTER_CONTROL, temp_press_oversample)
+    End Sub
+    
+    Public Sub setSamplerateValue(set_sample_rate As Float)
+        //Controls inactive duration (standby) in normal mode. value in mS
+        Dim value As Byte = 0x00
+        If set_sample_rate <= 0.5 Then
+            value = 0x00
+        ElseIf set_sample_rate <= 10.0 Then
+            value = 0x06
+        ElseIf set_sample_rate <= 20.0 Then
+            value = 0x07
+        ElseIf set_sample_rate <= 62.5 Then
+            value = 0x01
+        ElseIf set_sample_rate <= 125.0 Then
+            value = 0x02
+        ElseIf set_sample_rate <= 250.0 Then
+            value = 0x03
+        ElseIf set_sample_rate <= 500.0 Then
+            value = 0x04
+        ElseIf set_sample_rate <= 1000.0 Then
+            value = 0x05
+        Else 
+            value = 0x05
+        End If
+        setSamplerate(value)
+    End Sub
+    
+    Public Function getSampleRateValue() As Float
+        // returns Sample Rate in mS
+        Dim sample_rate As Byte = sample_filter_rate >> 5
+        Select sample_rate
+            Case 0x00
+                Return 0.50
+            Case 0x01
+                Return 62.50
+            Case 0x02
+                Return 125.00
+            Case 0x03
+                Return 250.00
+            Case 0x04
+                Return 500.00
+            Case 0x05
+                Return 1000.00
+            Case 0x06
+                Return 10.00
+            Case 0x07
+                Return 20.00
+            Case Else
+                Return 1000.00 //unknown, but this is default
+        End Select
+    End Function
+    
+    Public Sub setIIRfilter(set_IIR_filter As Byte)
+        //Controls the time constant of the IIR filter. bits 4,3,2
+        //000 Filter off (0x00 default)
+        //001 2 (0x01)
+        //010 4 (0x02)
+        //011 8 (0x03)
+        //100, others 16 (0x04)
+        sample_time = 0 //reset sample_time so that we calcuate it again
+        If set_IIR_filter > 0x04 Then
+            set_IIR_filter = 0x04
+        End If
+        sample_filter_rate = (set_IIR_filter << 2) | (sample_filter_rate & 0xe3)
+        write8(REGISTER_CONFIG, sample_filter_rate)
+        write8(REGISTER_CONTROL, temp_press_oversample)
+    End Sub
+    
+    Public Sub setIIRfilterValue(set_IIRFilter_oversample As Integer)
+        'value as 0-16 times
+        Dim Value As Byte = 0x00
+        Select set_IIRFilter_oversample
+            Case 0
+                Value = IIR_SAMPLING_0
+            Case 2
+                Value = IIR_SAMPLING_2
+            Case 4
+                Value = IIR_SAMPLING_4
+            Case 8
+                Value = IIR_SAMPLING_8
+            Case 16
+                Value = IIR_SAMPLING_16
+            Case Else
+                Value = IIR_SAMPLING_16
+        End Select
+        setIIRfilter(Value)
+    End Sub
+    
+    Public Function getIIRFilterValue() As Integer
+        // returns IIRFilter value (not byte)
+        Dim IIRFilter As Byte = (sample_filter_rate >> 2) & 0x07
+        Select IIRFilter
+            Case IIR_SAMPLING_0
+                Return 0
+            Case IIR_SAMPLING_2
+                Return 2
+            Case IIR_SAMPLING_4
+                Return 4
+            Case IIR_SAMPLING_8
+                Return 8
+            Case IIR_SAMPLING_16
+                Return 16
+            Case Else
+                Return 16
+        End Select
+    End Function
+    
+    Public Function getConversionTime() As Integer
+        // Returns conversion time in uS
+        // normally this will be a few ms (about 69 depending on sampling), but worst case is 2.156 seconds!
+        // See appendix B of DS for equation
+        If sample_time <> 0 Then
+            Return sample_time //if sample_time has already been calculated, just return it
+        Else
+            //calculate sample time, and save it
+            Dim IIRFilter As Integer = getIIRFilterValue()
+            Dim Temp_Sample_Time As Float = 2 * getTemperaturesamplingValue()
+            Dim Press_Sample_Time As Float = 2 * getPressuresamplingValue()
+            If Press_Sample_Time <> 0 Then
+                Press_Sample_Time += 0.5
+            End If
+            Dim Humid_Sample_Time As Float = 2 * getHumiditysamplingValue()
+            If Humid_Sample_Time <> 0 Then
+                Humid_Sample_Time += 0.5
+            End If
+            Dim conversion_time As Integer = ((1 + Temp_Sample_Time + Press_Sample_Time + Humid_Sample_Time) * 1000).ToInteger
+            Select IIRFilter
+                Case 0
+                    sample_time = conversion_time
+                Case 2
+                    sample_time = 2 * conversion_time
+                Case 4
+                    sample_time = 5 * conversion_time
+                Case 8
+                    sample_time = 11 * conversion_time
+                Case 16
+                    sample_time = 22 * conversion_time
+                Case Else
+                    sample_time = conversion_time
+            End Select
+        End If
+        Return sample_time
+    End Function
+    
+    Public Sub TakeReading()
+        Dim conversion_time As Integer = getConversionTime()
+        If Device.GetTimeSpan() > conversion_time Then //if time since last run is more than conversion time, take new reading
+            write8(REGISTER_CONTROL, temp_press_oversample) //take reading
+            Thread.Sleep(conversion_time) // wait ConversionTime for reading
+        End If
+    End Sub
+    
+    //================ Read Temp/Humidity/Pressure Functions ==============//
+    
+    Public Function readTemperature() As Float
+        //uses 20 bit unsigned int Typical raw result = Temperature_raw 535189
+        //returns temperature in degrees C
+        If online = False Then
+            Return 0
+        End If
+        
+        If normal_mode = False Then
+            TakeReading() 
+        End If
+        
+        readall()
+        
+        Return BME280_compensate_T_double(temperature_raw >> 4)
+    End Function
+    
+    Public Function readTemperatureF() As Float
+        //returns temperature in degrees F
+        If online = False Then
+            Return 0
+        End If    
+        Return ((readTemperature() * 9) / 5) + 32
+    End Function
+    
+    Public Function BME280_compensate_T_double(adc_T As Integer) As Float
+        // Returns temperature in DegC, double precision. Output value of “51.23” equals 51.23 DegC.
+        // t_fine carries fine temperature as global value
+        
+        Dim var1 As Float
+        Dim var2 As Float
+        Dim T As Float
+        
+        var1 = (adc_T / 16384.0 - dig_T1 / 1024.0) * dig_T2
+        var2 = ((adc_T / 131072.0 - dig_T1 / 8192.0) * (adc_T / 131072.0 - dig_T1 / 8192.0)) * dig_T3
+        t_fine = (var1 + var2).ToInteger()
+        T = (var1 + var2) / 5120.0
+        Return T
+    End Function
+    
+    Public Function readPressure() As Float
+        //uses 20 bit unsigned int Typical raw result = Pressure_raw 321916
+        If online = False Then
+            Return 0
+        End If
+        
+        readTemperature() // must be done first to get t_fine
+        
+        Return BME280_compensate_P_double(pressure_raw >> 4)
+    End Function
+    
+    Public Function BME280_compensate_P_double(adc_P As Integer) As Float
+        // Returns pressure in Pa as unsigned 32 bit integer. Output value of “96386” equals 96386 Pa = 963.86 hPa (mBar)
+        Dim var1 As Float 
+        Dim var2 As Float 
+        Dim p As Float
+        var1 = t_fine / 2 - 64000.0
+        var2 = var1 * var1 * dig_P6 / 32768.0 
+        var2 = var2 + var1 * dig_P5 * 2.0 
+        var2 = (var2 / 4.0) + (dig_P4 * 65536.0) 
+        var1 = (dig_P3 * var1 * var1 / 524288.0 + dig_P2 * var1) / 524288.0 
+        var1 = (1.0 + var1 / 32768.0) * dig_P1
+        If (var1 = 0.0) Then
+            Return 0 // avoid exception caused by division by zero
+        End If
+        p = 1048576.0 - adc_P 
+        p = (p - (var2 / 4096.0)) * 6250.0 / var1 
+        var1 = dig_P9 * p * p / 2147483648.0 
+        var2 = p * dig_P8 / 32768.0 
+        p = p + (var1 + var2 + dig_P7) / 16.0 
+        Return p / 100
+    End Function
+    
+    Public Function readHumidity() As Float
+        //uses 16 bit unsigned int Typical raw result = Humidity_raw 27991
+        If online = False Then
+            Return 0
+        End If
+        
+        readTemperature() // must be done first to get t_fine
+        
+        Return bme280_compensate_H_double(humidity_raw)
+    End Function
+    
+    
+    Public Function bme280_compensate_H_double(adc_H As Integer) As Float
+        // Returns humidity in %rH as as double. Output value of “46.332” represents 46.332 %rH
+        
+        Dim var_H As Float
+        var_H = t_fine - 76800.0 
+        var_H = (adc_H - (dig_H4 * 64.0 + dig_H5 / 16384.0 * var_H)) * (dig_H2 / 65536.0 * (1.0 + dig_H6 / 67108864.0 * var_H * (1.0 + dig_H3 / 67108864.0 * var_H)))
+        var_H = var_H * (1.0 - dig_H1 * var_H / 524288.0)
+        If (var_H > 100.0) Then
+            var_H = 100.0
+        ElseIf (var_H < 0.0) Then
+            var_H = 0.0
+        End If
+        Return var_H
+    End Function
+    
+    //**************************************************************************/
+    //
+    //    Calculates the altitude (in meters) from the specified atmospheric
+    //    pressure (in hPa), and sea-level pressure (in hPa).
+    //    @param  seaLevel      Sea-level pressure in hPa
+    //    @param  atmospheric   Atmospheric pressure in hPa
+    //
+    //**************************************************************************/
+    Public Function readAltitude(seaLevel As Float) As Float
+        
+        // Equation taken from BMP180 datasheet (page 16):
+        
+        // Note that using the equation from wikipedia can give bad results
+        // at high altitude.
+        
+        // Mean Sea Level Pressure is assumed to be 1013.25 unless changed.
+        
+        Dim atmospheric As Float = readPressure()
+        Dim factor As Float = atmospheric / seaLevel
+        Dim res As Float = factor.Pow(0.1903)
+        Return 44330.0 * (1.0 - (res))
+    End Function
+    
+    Public Function readAltitude() As Float
+        Return readAltitude(1013.25)
+    End Function
+    
+    //Or in Feet
+    Public Function readAltitudeFeet(seaLevel As Float) As Float
+        Return readAltitude(seaLevel) * 3.28084
+    End Function
+    
+    Public Function readAltitudeFeet() As Float
+        Return readAltitude(1013.25) * 3.28084
+    End Function
+    
+    //**************************************************************************/
+    //
+    //    Calculates Dew Point (in degrees C) from the specified temperature and
+    //    relative Humidity (in %) This equation is an aproximation, but
+    //    is fairly accurate for relative humidity values above 50%.
+    //    Dewpoint is the temperature at which a given concentration of water vapor
+    //    in air will form dew
+    //    from:
+    //    Lawrence, Mark G., 2005: 
+    //    The relationship between relative humidity and the dewpoint temperature in moist air: 
+    //    A simple conversion and applications.
+    //    Bull. Amer. Meteor. Soc., 86, 225-233. doi: http;//dx.doi.org/10.1175/BAMS-86-2-225
+    //
+    //**************************************************************************/
+    Public Function readAproxDewPoint() As Float
+        Dim Temperature As Float = readTemperature()
+        Dim Humidity As Float = readHumidity()
+        Return Temperature - ((100.0 - Humidity) / 5.0)
+    End Function
+    
+    //**************************************************************************/
+    //
+    //    Calculates Dew Point (in degrees C) from the specified temperature and
+    //    relative Humidity (in %) 
+    //    Uses the Magnus Formula (see https://en.wikipedia.org/wiki/Dew_point)
+    //
+    //**************************************************************************/
+    Public Function calculateDewPoint(b As Float, c As Float, T As Float, H As Float) As Float 
+        'Dim a As Float = 6.1121   //not used
+        'b sometimes called c17 is ~ 18
+        'c sometimes called c243 is ~ 250
+        'Dim d As Float = 234.5   //not used in Magnus basic formula
+        'T is Temperature
+        'H is Humidity
+        Dim g As Float = (H / 100.0).Log() + ((b * T) / (c + T))
+        Dim Dewpoint As Float = (c * g) / (b - g)
+        Return Dewpoint
+    End Function
+    
+    Public Function readDewPoint() As Float
+        //uses Wikepeadia formula constants for Magnus equation
+        Return calculateDewPoint(18.675, 257.14, readTemperature(), readHumidity())
+    End Function
+    
+    Public Function readAlternateDewPoint() As Float
+        //uses alternate constants
+        Return calculateDewPoint(17.67, 243.5, readTemperature(), readHumidity())
+    End Function
+    
+    //====================== I2C read/write stuff =============================//
+    
+    //**************************************************************************/
+    //
+    //    @brief  Writes an 8 bit value over I2C
+    //
+    //**************************************************************************/
+    Public Sub SetRegister(reg As Byte)
+        Dim data As ListOfByte = New ListOfByte
+        data.Add(reg)
+        BME280_I2C.Write(data)
+    End Sub
+    
+    Public Sub write8(reg As Byte, value As Byte)
+        Dim data As ListOfByte = New ListOfByte
+        data.Add(reg)
+        data.Add(value)
+        BME280_I2C.Write(data)
+    End Sub
+    
+    //**************************************************************************/
+    //
+    //    @brief  Reads a 16 bit value over I2C returns two byte ListOfBytes
+    //
+    //**************************************************************************/
+    Public Function read2X8(reg As Byte) As ListOfByte
+        SetRegister(reg)
+        Dim value As ListOfByte = BME280_I2C.Read(2)
+        Return value
+    End Function
+    
+    //**************************************************************************/
+    //
+    //    @brief  Reads an unsigned 8 bit value over I2C
+    //
+    //**************************************************************************/
+    Public Function read8(reg As Byte) As Integer //should return unsigned Byte
+        SetRegister(reg)
+        Dim result As Short = 0
+        Dim value As ListOfByte = BME280_I2C.Read(1)
+        If value <> Nothing Then
+            result = value(0)
+        End If
+        Return result
+    End Function
+    
+    //**************************************************************************/
+    //
+    //    @brief  Reads a signed 8 bit value over I2C
+    //
+    //**************************************************************************/
+    Public Function readS8(reg As Byte) As Integer
+        Dim result As Byte = read8(reg).ToByte()
+        Return result.SignExtend() //return signed Integer
+    End Function
+    
+    //**************************************************************************/
+    //
+    //    @brief  Reads an unsigned 16 bit value over I2C
+    //
+    //**************************************************************************/
+    Public Function read16(reg As Byte) As Integer
+        Return readS16(reg).ToShort.ZeroExtend()
+    End Function
+    
+    Public Function read16_LE(reg As Byte) As Integer
+        Return readS16_LE(reg).ToShort.ZeroExtend()
+    End Function
+    
+    //**************************************************************************/
+    //
+    //    @brief  Reads a signed 16 bit value over I2C
+    //
+    //**************************************************************************/
+    Public Function readS16(reg As Byte) As Integer //should return Short
+        Dim result As Short = 0
+        Dim value As ListOfByte = read2X8(reg)
+        If value <> Nothing Then
+            result = (value(0) << 8) | value(1)
+            //result = value.ExtractShort(0, Endianness.Big) //not working
+        End If
+        //convert value to 2's compliment
+        If (value(0) > 0x7f) Then
+            result = (~result + 1) * (-1)
+        End If
+        Return result
+    End Function
+    
+    Public Function readS16_LE(reg As Byte) As Integer //should return Short
+        Dim result As Short = 0
+        Dim value As ListOfByte = read2X8(reg)
+        If value <> Nothing Then
+            result = (value(1) << 8) | value(0)
+            //result = value.ExtractShort(0, Endianness.Little) //not working
+        End If
+        //convert value to 2's compliment
+        If (value(1) > 0x7f) Then
+            result = (~result + 1) * (-1)
+        End If
+        Return result
+    End Function
+    
+    //**************************************************************************/
+    //
+    //    @brief  Reads a signed 24 bit value over I2C
+    //
+    //**************************************************************************/
+    
+    Public Function read24(reg As Byte) As Integer
+        SetRegister(reg)
+        Dim result As Integer = 0
+        Dim value As ListOfByte = BME280_I2C.Read(3)
+        If value <> Nothing Then
+            result = (value(0) << 16) | (value(1) << 8) | value(2)
+        End If
+        Return result
+    End Function
+    
+    //**************************************************************************/
+    //
+    //    @brief  Reads all values (press/temp/humid) values over I2C
+    //    reg is start register - to read all read 0xF7 to 0xFE (8 registers)
+    //    Allows use of Shadow registers in normal mode (ie can read registers
+    //    to get previous reading while module is acquiring new reading)
+    //
+    //**************************************************************************/
+    
+    Public Sub readall()
+        SetRegister(REGISTER_PRESSUREDATA)
+        Dim value As ListOfByte = BME280_I2C.Read(8)
+        If value <> Nothing Then
+            pressure_raw = (value(0) << 16) | (value(1) << 8) | value(2)
+            temperature_raw = (value(3) << 16) | (value(4) << 8) | value(5)
+            humidity_raw = (value(6) << 8) | value(7)
+        End If 
+    End Sub
+    
+    //**************************************************************************/
+    //
+    //    @brief  Reads the factory-set coefficients
+    //
+    //**************************************************************************/
+    Public Sub readCoefficients()
+        
+        dig_T1 = read16_LE(REGISTER_DIG_T1)
+        dig_T2 = readS16_LE(REGISTER_DIG_T2)
+        dig_T3 = readS16_LE(REGISTER_DIG_T3)
+        
+        dig_P1 = read16_LE(REGISTER_DIG_P1)
+        dig_P2 = readS16_LE(REGISTER_DIG_P2)
+        dig_P3 = readS16_LE(REGISTER_DIG_P3)
+        dig_P4 = readS16_LE(REGISTER_DIG_P4)
+        dig_P5 = readS16_LE(REGISTER_DIG_P5)
+        dig_P6 = readS16_LE(REGISTER_DIG_P6)
+        dig_P7 = readS16_LE(REGISTER_DIG_P7)
+        dig_P8 = readS16_LE(REGISTER_DIG_P8)
+        dig_P9 = readS16_LE(REGISTER_DIG_P9)
+        
+        dig_H1 = read8(REGISTER_DIG_H1)
+        dig_H2 = readS16_LE(REGISTER_DIG_H2)
+        dig_H3 = read8(REGISTER_DIG_H3)
+        dig_H4 = (read8(REGISTER_DIG_H4) << 4) | (read8(REGISTER_DIG_H4 + 1) & 0x0f)
+        dig_H5 = (read8(REGISTER_DIG_H5 + 1) << 4) | (read8(REGISTER_DIG_H5) >> 4)
+        dig_H6 = readS8(REGISTER_DIG_H6)
+    End Sub
+    
+End Class

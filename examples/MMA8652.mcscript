@@ -1,0 +1,1192 @@
+﻿Enum MMA8652_ACTIVE_ODR As Byte
+    _800HZ = 0x00
+    _400HZ = 0x08
+    _200HZ = 0x10
+    _100HZ = 0x18
+    _50HZ = 0x20
+    _12_5HZ = 0x28 // 12.5 Hz, etc.
+    _6_25HZ = 0x30
+    _1_56HZ = 0x38
+End Enum
+
+Enum MMA8652_MODS As Byte
+    NORMAL = 0x00
+    LOW_POWER_LOW_NOISE = 0x01
+    HIGH_RES = 0x02
+    LOW_POWER = 0x03
+End Enum
+
+Enum MMA8652_SLEEP_ODR As Byte
+    _50HZ = 0x00
+    _12_5HZ = 0x40 // 12.5 Hz, etc.
+    _6_25HZ = 0x80
+    _1_56HZ = 0xc0
+End Enum
+
+Enum MMA8652_SMODS As Byte
+    NORMAL = 0x00
+    LOW_POWER_LOW_NOISE = 0x08
+    MOD_HIGH_RES = 0x10
+    MOD_LOW_POWER = 0x18
+End Enum
+
+Enum MMA8652_BF_ANGLE As Byte
+    _80 = 0x00
+    _75 = 0x40
+    _70 = 0x80
+    _65 = 0xc0
+End Enum
+
+Enum MMA8652_THS_ANGLE As Byte
+    _15 = 0x38
+    _20 = 0x48
+    _30 = 0x60
+    _35 = 0x68
+    _40 = 0x78
+    _45 = 0x80
+    _55 = 0x98
+    _60 = 0xa0
+    _70 = 0xb8
+    _75 = 0xc8
+End Enum
+
+Enum MMA8652_HYS_ANGLE As Byte
+    _0 = 0x00
+    _4 = 0x01
+    _7 = 0x02
+    _11 = 0x03
+    _14 = 0x04
+    _17 = 0x05
+    _21 = 0x06
+    '_24 = 0x07 // Using this with 75 THS does not work properly on the device
+End Enum
+
+Enum MMA8652_SCALES As Byte
+    _2G = 0x00
+    _4G = 0x01
+    _8G = 0x02
+End Enum
+
+
+
+Class MMA8652
+    Const VERSION As String = "0.1.0" // Adheres to semantic versioning
+    
+    Const MMA8652_I2C_ADDR As Byte = 0x1d
+    Const I2C_SPEED As Integer = 400000
+    
+    'Registers
+    'Assume all are read only. If commented with a "W", they are R/W
+    'Assume all have values initialized to 0x00 by the hardware unless otherwise commented
+    'Const STATUS_REG As Byte = 0x00
+    Const OUT_X_MSB_REG As Byte = 0x01 // 8 Most Significant Bits (MSB)
+    Const OUT_X_LSB_REG As Byte = 0x02 // 4 Least Significant Bits (MSB)
+    Const OUT_Y_MSB_REG As Byte = 0x03
+    Const OUT_Y_LSB_REG As Byte = 0x04
+    Const OUT_Z_MSB_REG As Byte = 0x05
+    Const OUT_Z_LSB_REG As Byte = 0x06
+    'Const F_SETUP_REG As Byte = 0x09 // "W" First in first out (FIFO) setup
+    'Const TRIG_CFG_REG As Byte = 0x0a // "W" Trigger config mode
+    Const SYSMOD_REG As Byte = 0x0b // System mode
+    Const INT_SOURCE_REG As Byte = 0x0c // Interrupt soruce/status
+    Const WHO_AM_I_REG As Byte = 0x0d // Value should be 0x4A
+    Const XYZ_DATA_CFG_REG As Byte = 0x0e // "W" Dynamic range settings
+    Const HP_FILTER_CUTOFF_REG As Byte = 0x0f // "W" High pass filter selection
+    Const PL_STATUS_REG As Byte = 0x10 // Portrait/Landscape (PL)
+    Const PL_CFG_REG As Byte = 0x11 // "W" Config as 0x80 by default
+    Const PL_COUNT_REG As Byte = 0x12 // "W" Debounce counter
+    Const PL_BF_ZCOMP_REG As Byte = 0x13 // "W" Back/Front (BF) Z-Lock Trip Threshold as 0x44 by default
+    Const PL_THS_REG As Byte = 0x14 // "W" Threshold (THS) and Hysteresis as 0x84 by default
+    Const FF_MT_CFG_REG As Byte = 0x15 // "W" Freefall/Motion (FF_MT) functional block configuration
+    Const FF_MT_SRC_REG As Byte = 0x16 // Event source
+    Const FF_MT_THS_REG As Byte = 0x17 // "W"
+    Const FF_MT_COUNT_REG As Byte = 0x18 // "W" Debounce counter
+    Const TRANSIENT_CFG_REG As Byte = 0x1d // "W"
+    Const TRANSIENT_SRC_REG As Byte = 0x1e // Event status
+    Const TRANSIENT_THS_REG As Byte = 0x1f // "W"
+    Const TRANSIENT_COUNT_REG As Byte = 0x20 // Debounce counter
+    Const PULSE_CFG_REG As Byte = 0x21 // "W" Enable configuration
+    Const PULSE_SRC_REG As Byte = 0x22 // Detection source
+    Const PULSE_THSX_REG As Byte = 0x23 // "W" Threshold (THS) X
+    Const PULSE_THSY_REG As Byte = 0x24 // "W"
+    Const PULSE_THSZ_REG As Byte = 0x25 // "W"
+    Const PULSE_TMLT_REG As Byte = 0x26 // "W" Time limit for pulse
+    Const PULSE_LTCY_REG As Byte = 0x27 // "W" Latency time for 2nd pulse
+    Const PULSE_WIND_REG As Byte = 0x28 // "W" Window time for 2nd pulse
+    Const ASLP_COUNT_REG As Byte = 0x29 // "W" Counter setting for auto-sleep (ASLP)
+    Const CTRL_REG1_REG As Byte = 0x2a // "W" Data rates and modes setting
+    Const CTRL_REG2_REG As Byte = 0x2b // "W" Sleep Enable, OS modes, Software Reset (RST), Self-Test (ST)
+    Const CTRL_REG3_REG As Byte = 0x2c // "W" Wake from sleep, Interrupt polarity (IPOL), Push-Pull/Open-Drain (PP_OD)
+    Const CTRL_REG4_REG As Byte = 0x2d // "W" Interrupt enable register
+    Const CTRL_REG5_REG As Byte = 0x2e // "W" Interrupt pin (INT1/INT2) map
+    'Const OFF_X_REG As Byte = 0x2f // "W" X-axis offset adjust
+    'Const OFF_Y_REG As Byte = 0x30 // "W" Y-axis offset adjust
+    'Const OOF_Z_REG As Byte = 0x31 // "W" Z-axis offset adjust
+    
+    
+    // Below are register bits, named
+    
+    // Readonly
+    'Const STATUS_ZYXOW As Byte = 0x80 // Overwrite (OW)
+    'Const STATUS_ZOW As Byte = 0x40 // Overwrite (OW)
+    'Const STATUS_YOW As Byte = 0x20 // Overwrite (OW)
+    'Const STATUS_XOW As Byte = 0x10 // Overwrite (OW)
+    'Const STATUS_ZYXDR As Byte = 0x08 // Data ready (DR)
+    'Const STATUS_ZDR As Byte = 0x04 // Data ready (DR)
+    'Const STATUS_YDR As Byte = 0x02 // Data ready (DR)
+    'Const STATUS_XDR As Byte = 0x01 // Data ready (DR)
+    
+    'Const F_SETUP_F_MODE As Byte = 0xc0 // All FIFO Mode bits
+    'Const F_SETUP_F_WMRK As Byte = 0x3f // All FIFO WMRK bits
+    
+    // Trigger configuration bits are reset by reading the appropriate source register
+    // 0xc0 bits are empty
+    'Const TRIG_CFG_Trig_TRANS As Byte = 0x20
+    'Const TRIG_CFG_Trig_LNDPRT As Byte = 0x10
+    'Const TRIG_CFG_Trig_PULSE As Byte = 0x08
+    'Const TRIG_CFG_Trig_FF_MT As Byte = 0x04
+    // 0x03 bits are empty
+    
+    // Readonly
+    'Const SYSMOD_FGERR As Byte = 0x80 // FIFO Gate error
+    'Const SYSMOD_FGT As Byte = 0x7c // All FGT bits. Number of ODR time units since FGERR was asserted
+    Const SYSMOD_STANDBY As Byte = 0x00
+    Const SYSMOD_WAKE As Byte = 0x01
+    Const SYSMOD_SLEEP As Byte = 0x02
+    Const SYSMOD_SYSMOD As Byte = 0x03 // All system mode SYSMOD bits
+    
+    // Readonly
+    Const INT_SOURCE_SRC_ASLP As Byte = 0x80 // Auto-SLEEP/WAKE (ASLP)
+    'Const INT_SOURCE_SRC_FIFO As Byte = 0x40 // MMA8652 only
+    Const INT_SOURCE_SRC_TRANS As Byte = 0x20 // Transient
+    Const INT_SOURCE_SRC_LNDPRT As Byte = 0x10 // Landscape/Portrait Orientation
+    Const INT_SOURCE_SRC_PULSE As Byte = 0x08
+    Const INT_SOURCE_SRC_FF_MT As Byte = 0x04 // Freefall/Motion
+    // 0x02 is empty
+    'Const INT_SOURCE_SRC_DRDY As Byte = 0x01 // Data Ready
+    
+    // Readonly
+    Const WHO_AM_I_ As Byte = 0x4a
+    
+    // Bits 0xe0 are empty
+    Const XYZ_DATA_CFG_HPF_OUT As Byte = 0x10 // Enable high-pass output data
+    // Bits 0x0c are empty
+    Const XYZ_DATA_CFG_FS As Byte = 0x03 // Both full-scale bits, 0x00 2g, 0x01 4g, 0x10 8g
+    
+    // Bits 0xc0 are empty
+    'Const HP_FILTER_CUTOFF_Pulse_HPF_BYP As Byte = 0x20
+    Const HP_FILTER_CUTOFF_Pulse_LPF_EN As Byte = 0x10
+    // Bits 0x0c are empty
+    'Const HP_FILTER_CUTOFF_Pulse_SEL As Byte = 0x03 // Both SEL bits
+    
+    // Readonly
+    'Const PL_STATUS_NEWLP As Byte = 0x80 // Landscape/Portrait status change flag
+    'Const PL_STATUS_LO As Byte = 0x40 // Z-Tilt angle lockout
+    // 0x38 bits are empty
+    Const PL_STATUS_LAPO As Byte = 0x06 // Both Landscape/Portrait orientation bits
+    Const PL_STATUS_BAFRO As Byte = 0x01 // Back or front orientation
+    
+    Const PL_CFG_DBCNTM As Byte = 0x80 // Debounce counter mode selection
+    Const PL_CFG_PL_EN As Byte = 0x40 // Portrait/Landscape detection enable
+    // Bits 0x3f are empty
+    
+    'Const PL_COUNT_DBNCE As Byte = 0xff // All PL debounce bits
+    
+    Const PL_BF_ZCOMP_BKFR As Byte = 0xc0 // All Back/Front trip angle threshold bits
+    // bits 0x38 are empty
+    Const PL_BF_ZCOMP_ZLOCK As Byte = 0x07 // All z-lock angle threshold bits
+    
+    Const PL_THS_THS As Byte = 0xf8 // All Portrait/Landscape trip threshold angle bits
+    Const PL_THS_HYS As Byte = 0x07 // All Hysteresis value bits
+    
+    Const FF_MT_CFG_ELE As Byte = 0x80 // Event latch enable (ELE)
+    Const FF_MT_CFG_OAE As Byte = 0x40 // Motion/Freefall detect
+    Const FF_MT_CFG_ZEFE As Byte = 0x20 // Event flag enable on Z
+    Const FF_MT_CFG_YEFE As Byte = 0x10 // Y
+    Const FF_MT_CFG_XEFE As Byte = 0x08 // X
+    // 0x07 bits are empty
+    Const FF_MT_CFG_EFE As Byte = 0x38 // All direction event flag
+    
+    // Readonly
+    'Const FF_MT_SRC_EA As Byte = 0x80 // Event active flag
+    // 0x40 bit is empty
+    Const FF_MT_SRC_ZHE As Byte = 0x20 // Z Motion
+    Const FF_MT_SRC_ZHP As Byte = 0x10 // Z-Motion polarity
+    Const FF_MT_SRC_YHE As Byte = 0x08
+    Const FF_MT_SRC_YHP As Byte = 0x04
+    Const FF_MT_SRC_XHE As Byte = 0x02
+    Const FF_MT_SRC_XHP As Byte = 0x01
+    
+    'Const FF_MT_THS_DBCNTM As Byte = 0x80 // Debounce counter mode selection
+    'Const FF_MT_THS_THS As Byte = 0x6f // All THS bits
+    
+    'Const FF_MT_COUNT_D As Byte = 0xff // All Motion counter data bits
+    
+    // 0xe0 bits are empty
+    Const TRANSIENT_CFG_ELE As Byte = 0x10 // Event flag latch
+    'Const TRANSIENT_CFG_ZTEFE As Byte = 0x08 // Event flag enable for z-Transient acceleration
+    'Const TRANSIENT_CFG_YTEFE As Byte = 0x04
+    'Const TRANSIENT_CFG_XTEFE As Byte = 0x02
+    Const TRANSIENT_CFG_TEFE As Byte = 0x0e // For all directions
+    'Const TRANSIENT_CFG_HPF_BYP As Byte = 0x01 // High-pass filter bypass
+    
+    // Readonly
+    // 0x80 is empty
+    'Const TRANSIENT_SRC_EA As Byte = 0x40 // Event Active flag
+    Const TRANSIENT_SRC_ZTRANSE As Byte = 0x20 // Z-transient event
+    Const TRANSIENT_SRC_Z_TRANS_POL As Byte = 0x10 // Polarity of Z-Transient event that triggered the interrupt
+    Const TRANSIENT_SRC_YTRANSE As Byte = 0x08
+    Const TRANSIENT_SRC_Y_TRANS_POL As Byte = 0x04
+    Const TRANSIENT_SRC_XTRANSE As Byte = 0x02
+    Const TRANSIENT_SRC_X_TRANS_POL As Byte = 0x01
+    
+    'Const TRANSIENT_THS_DBCNTM As Byte = 0x80
+    'Const TRANSIENT_THS_THS As Byte = 0x6f // All THS bits
+    
+    'Const TRANSIENT_COUNT_D As Byte = 0xff // All Transient counter data bits
+    
+    Const PULSE_CFG_DPA As Byte = 0x80 // Double pulse abort
+    Const PULSE_CFG_ELE As Byte = 0x40 // Event Flag Latch
+    'Const PULSE_CFG_ZDPEFE As Byte = 0x20 // Z Double Pulse
+    'Const PULSE_CFG_ZSPEFE As Byte = 0x10 // Z Single Pulse
+    'Const PULSE_CFG_YDPEFE As Byte = 0x08
+    'Const PULSE_CFG_YSPEFE As Byte = 0x04
+    'Const PULSE_CFG_XDPEFE As Byte = 0x02
+    'Const PULSE_CFG_XSPEFE As Byte = 0x01
+    Const PULSE_CFG_PEFE As Byte = 0x3f // For all directions
+    
+    // Readonly
+    'Const PULSE_SRC_EA As Byte = 0x80 // Event Active
+    'Const PULSE_SRC_AxZ As Byte = 0x40 // Z axis event
+    'Const PULSE_SRC_AxY As Byte = 0x20
+    'Const PULSE_SRC_AxX As Byte = 0x10
+    Const PULSE_SRC_DPE As Byte = 0x08 // Double pulse?
+    'Const PULSE_SRC_Pol_Z As Byte = 0x04 // Pulse polarity
+    'Const PULSE_SRC_Pol_Y As Byte = 0x02
+    'Const PULSE_SRC_Pol_X As Byte = 0x01
+    
+    // 0x80 bit is empty
+    'Const PULSE_THSX_THSX As Byte = 0x6f // All Pulse threshold in X bits
+    
+    // 0x80 bit is empty
+    'Const PULSE_THSY_THSY As Byte = 0x6f // All Pulse threshold in Y bits
+    
+    // 0x80 bit is empty
+    'Const PULSE_THSZ_THSZ As Byte = 0x6f // All Pulse threshold in Z bits
+    
+    'Const PULSE_TMLT_TMLT As Byte = 0xff // All Pulse Time limit bits
+    
+    'Const PULSE_LTCY_LTCY As Byte = 0xff // All Pulse latency (ignore window) bits
+    
+    'Const PULSE_WIND_WIND As Byte = 0xff // All Window after latency for 2nd pulse bits
+    
+    'Const ASLP_COUNT_D As Byte = 0xff // All Autosleep counter data bits
+    
+    Const CTRL_REG1_ASLP_RATE As Byte = 0xc0 // Both Auto-WAKE sample frequency when in SLEEP mode bits
+    Const CTRL_REG1_DR As Byte = 0x38 // All 3 Data rate selection bits
+    // Bit 0x04 is empty
+    'Const CTRL_REG1_FREAD As Byte = 0x02 // Fast-read mode
+    Const CTRL_REG1_ACTIVE As Byte = 0x01 // Full-scale selection
+    
+    'Const CTRL_REG2_ST As Byte = 0x80 // Self-Test Enable
+    Const CTRL_REG2_RST As Byte = 0x40 // Software Reset
+    /// 0x20 is empty
+    Const CTRL_REG2_SMODS As Byte = 0x18 // Both SLEEP mode oower scheme selection bits
+    Const CTRL_REG2_SLPE As Byte = 0x04 // Auto-SLEEP enable
+    Const CTRL_REG2_MODS As Byte = 0x03 // Both ACTIVE mode power scheme selection bits
+    
+    'Const CTRL_REG3_FIFO_GATE As Byte = 0x80 // MMA8652 only
+    Const CTRL_REG3_WAKE_TRANS As Byte = 0x40 // MMA8652 only. Wake from transient interrupt
+    Const CTRL_REG3_WAKE_LNDPRT As Byte = 0x20 // Wake from orientation interrupt
+    Const CTRL_REG3_WAKE_PULSE As Byte = 0x10 // MMA8652 only. Wake from pulse interrupt
+    Const CTRL_REG3_WAKE_FF_MT As Byte = 0x08 // Wake from freefall/motion interrupt
+    // 0x04 is 0
+    'Const CTRL_REG3_IPOL As Byte = 0x02 // Interrupt polarity
+    'Const CTRL_REG3_PP_OD As Byte = 0x01 // Push-Pull/Open-Drain selection on interrupt pad
+    'Const CTRL_REG3_WAKE_CLEAR As Byte = 0x78 // Clear all wake interrupts
+    
+    Const CTRL_REG4_INT_EN_ASLP As Byte = 0x80 // Auto-SLEEP/WAKE interrupt enable
+    'Const CTRL_REG4_INT_EN_FIFO As Byte = 0x40 // MMA8652 only. FIFO interrupt enable
+    Const CTRL_REG4_INT_EN_TRANS As Byte = 0x20 // MMA8652 only. Transient interrupt enable
+    Const CTRL_REG4_INT_EN_LNDPRT As Byte = 0x10 // Orientation interrupt enable
+    Const CTRL_REG4_INT_EN_PULSE As Byte = 0x08 // MMA8652 only. Pulse detection interrupt enable
+    Const CTRL_REG4_INT_EN_FF_MT As Byte = 0x04 // Freefall/Motion interrupt enable
+    // 0x02 is empty
+    'Const CTRL_REG4_INT_EN_DRDY As Byte = 0x01 // Data Ready interrupt enable
+    'Const CTRL_REG4_INT_CLEAR As Byte = 0xfd // Disable all interrupts
+    
+    'Set INT2/INT1 pins (0/1 as value)
+    Const CTRL_REG5_INT_CFG_ASLP As Byte = 0x80
+    'Const CTRL_REG5_INT_CFG_FIFO As Byte = 0x40 // MMA8652 only
+    Const CTRL_REG5_INT_CFG_TRANS As Byte = 0x20 // MMA8652 only
+    Const CTRL_REG5_INT_CFG_LNDPRT As Byte = 0x10
+    Const CTRL_REG5_INT_CFG_PULSE As Byte = 0x08 // MMA8652 only
+    Const CTRL_REG5_INT_CFG_FF_MT As Byte = 0x04
+    // 0x02 is empty
+    'Const CTRL_REG5_INT_CFG_DRDY As Byte = 0x01
+    'Const CTRL_REG5_INT_CFG_CLEAR As Byte = 0xfd // Map all interrupts to the same pin
+    
+    'Const OFF_X_D As Byte = 0xff // All offset x bits
+    
+    'Const OFF_Y_D As Byte = 0xff // All offset y bits
+    
+    'Const OFF_Z_D As Byte = 0xff // All offset z bits
+    
+    
+    Const LOW_ZLOCK_THRESHOLD As Float = 14.0
+    Const HIGH_ZLOCK_THRESHOLD As Float = 42.0
+    Const ZLOCK_THRESHOLD_RESOLUTION As Float = 4.0
+    
+    Const LOW_GRAVITY_THRESHOLD As Float = 0.0
+    Const HIGH_GRAVITY_THRESHOLD As Float = 8.0
+    Const GRAVITY_THRESHOLD_RESOLUTION As Float = 0.063
+    
+    Const LOW_ASLP_DURATION As Float = 0.0
+    Const NORMAL_ASLP_DURATION As Float = 81000.0
+    Const HIGH_ASLP_DURATION As Float = 162000.0
+    Const NORMAL_ASLP_COUNT_RESOLUTION As Float = 320.0
+    Const HIGH_ASLP_COUNT_RESOLUTION As Float = 640.0
+    
+    Private gAccelerometer As I2c
+    Public online As Boolean = False
+    
+    
+    Private Function Init(enableHighPassFilter As Boolean, outputDataFormat As MMA8652_SCALES) As Nothing
+        gAccelerometer = I2c.Create(I2C_SPEED, Pin.SCL, Pin.SDA, MMA8652_I2C_ADDR)
+        If Read(WHO_AM_I_REG) = WHO_AM_I_ Then
+            online = True
+            online = online And Reset()
+            
+            online = online And Standby()
+            
+            If enableHighPassFilter Then
+                online = online And Write(XYZ_DATA_CFG_REG, XYZ_DATA_CFG_HPF_OUT)
+            End If
+            
+            online = online And Write(XYZ_DATA_CFG_REG, Read(XYZ_DATA_CFG_REG) & outputDataFormat)
+            
+            online = online And Activate()
+        End If
+    End Function // Init
+    
+    
+    Public Sub New()
+        Init(False, MMA8652_SCALES._2G)
+    End Sub // New
+    
+    
+    Public Sub New(enableHighPassFilter As Boolean, outputDataFormat As MMA8652_SCALES)
+        Init(enableHighPassFilter, outputDataFormat)
+    End Sub // New
+    
+    
+    Public Function Accel() As ListOfFloat
+        Dim data As ListOfByte = Read(OUT_X_MSB_REG, 6)
+        Dim output As ListOfFloat = New ListOfFloat
+        Dim outputDataFormat As Byte = Read(XYZ_DATA_CFG_REG) & XYZ_DATA_CFG_FS
+        Dim accelerationReading As Short
+        Dim convertedReading As Float
+        Dim scaleFactor As Float
+        
+        Select outputDataFormat
+            Case MMA8652_SCALES._2G
+                scaleFactor = 0.00098
+            Case MMA8652_SCALES._4G
+                scaleFactor = 0.00196
+            Case MMA8652_SCALES._8G
+                scaleFactor = 0.0039
+        End Select
+        
+        For axisCount As Integer = 0 To 5 Step 2
+            accelerationReading = ((data(axisCount) << 8) | data(axisCount + 1)) >> 4
+            
+            'We need to 2s compliment negative numbers
+            If ((accelerationReading & 0x0800) = 0x0800) Then
+                accelerationReading = (accelerationReading ^ 0x0fff) * -1
+            End If
+            
+            convertedReading = scaleFactor * accelerationReading
+            output.Add(convertedReading)
+        Next
+        
+        Return output
+    End Function // Accel
+    
+    
+    Private Function Read(address As Byte) As Byte
+        Dim result As Byte = 0
+        Dim value As ListOfByte = Read(address, 1) // Read single byte
+        
+        If value <> Nothing Then
+            result = value(0)
+        End If
+        Return result
+    End Function // Read
+    
+    
+    Private Function Read(address As Byte, length As Byte) As ListOfByte
+        Dim data As ListOfByte = New ListOfByte
+        
+        data.Add(address)
+        gAccelerometer.Write(data, False)
+        
+        Return gAccelerometer.Read(length, True)
+    End Function // Read
+    
+    
+    Private Function Write(address As Byte, value As Byte) As Boolean
+        Dim data As ListOfByte = New ListOfByte
+        
+        data.Add(value)
+        
+        Return Write(address, data) // Write single byte
+    End Function // Write
+    
+    
+    Private Function Write(address As Byte, values As ListOfByte) As Boolean
+        values.InsertAt(0, address)
+        
+        Return gAccelerometer.Write(values, True)
+    End Function // Write
+    
+    
+    'Reset the accelerometer. This may take some time.
+    Public Function Reset() As Boolean
+        Dim result As Boolean = Write(CTRL_REG2_REG, CTRL_REG2_RST)
+        While (Read(CTRL_REG2_REG) & CTRL_REG2_RST) = CTRL_REG2_RST
+            Thread.Sleep(1000) // Wait for reset to end, if necessary
+        End While
+        Return result
+    End Function // Reset
+    
+    
+    'Returns list of length 2: maxTime, timeStep (both in ms)
+    Private Function GetMaxTimeAndTimeStep(stepSize As String) As ListOfFloat
+        Dim frequency As Byte = Read(CTRL_REG1_REG) & CTRL_REG1_DR
+        Dim mode As Byte = Read(CTRL_REG2_REG) & CTRL_REG2_MODS
+        Dim ms As Float
+        Dim time As Float
+        Dim offset As Integer
+        Dim msTable As ListOfFloat = New ListOfFloat
+        Dim result As ListOfFloat = New ListOfFloat
+        
+        Select stepSize
+            Case "short"
+                msTable.Add(0.625)
+                msTable.Add(0.625)
+                msTable.Add(1.25)
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(5.0)
+                msTable.Add(5.0)
+                msTable.Add(5.0)
+                
+                msTable.Add(0.625)
+                msTable.Add(0.625)
+                msTable.Add(1.25)
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(20.0)
+                msTable.Add(20.0)
+                msTable.Add(20.0)
+                
+                msTable.Add(0.625)
+                msTable.Add(0.625)
+                msTable.Add(0.625)
+                msTable.Add(0.625)
+                msTable.Add(0.625)
+                msTable.Add(0.625)
+                msTable.Add(0.625)
+                msTable.Add(0.625)
+                
+                msTable.Add(0.625)
+                msTable.Add(1.25)
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(10.0)
+                msTable.Add(40.0)
+                msTable.Add(40.0)
+                msTable.Add(40.0)
+            Case "medium"
+                msTable.Add(1.25)
+                msTable.Add(1.25)
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(10.0)
+                msTable.Add(10.0)
+                msTable.Add(10.0)
+                msTable.Add(10.0)
+                
+                msTable.Add(1.25)
+                msTable.Add(1.25)
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(10.0)
+                msTable.Add(40.0)
+                msTable.Add(40.0)
+                msTable.Add(40.0)
+                
+                msTable.Add(1.25)
+                msTable.Add(1.25)
+                msTable.Add(1.25)
+                msTable.Add(1.25)
+                msTable.Add(1.25)
+                msTable.Add(1.25)
+                msTable.Add(1.25)
+                msTable.Add(1.25)
+                
+                msTable.Add(1.25)
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(10.0)
+                msTable.Add(20.0)
+                msTable.Add(80.0)
+                msTable.Add(80.0)
+                msTable.Add(80.0)
+            Case "long"
+                msTable.Add(1.25)
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(10.0)
+                msTable.Add(20.0)
+                msTable.Add(20.0)
+                msTable.Add(20.0)
+                msTable.Add(20.0)
+                
+                msTable.Add(1.25)
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(10.0)
+                msTable.Add(20.0)
+                msTable.Add(80.0)
+                msTable.Add(80.0)
+                msTable.Add(80.0)
+                
+                msTable.Add(1.25)
+                msTable.Add(2.5)
+                msTable.Add(2.5)
+                msTable.Add(2.5)
+                msTable.Add(2.5)
+                msTable.Add(2.5)
+                msTable.Add(2.5)
+                msTable.Add(2.5)
+                
+                msTable.Add(1.25)
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(10.0)
+                msTable.Add(20.0)
+                msTable.Add(80.0)
+                msTable.Add(160.0)
+                msTable.Add(160.0)
+            Case Else 'xlong
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(10.0)
+                msTable.Add(20.0)
+                msTable.Add(40.0)
+                msTable.Add(40.0)
+                msTable.Add(40.0)
+                msTable.Add(40.0)
+                
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(10.0)
+                msTable.Add(20.0)
+                msTable.Add(40.0)
+                msTable.Add(160.0)
+                msTable.Add(160.0)
+                msTable.Add(160.0)
+                
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(5.0)
+                msTable.Add(5.0)
+                msTable.Add(5.0)
+                msTable.Add(5.0)
+                msTable.Add(5.0)
+                msTable.Add(5.0)
+                
+                msTable.Add(2.5)
+                msTable.Add(5.0)
+                msTable.Add(10.0)
+                msTable.Add(20.0)
+                msTable.Add(40.0)
+                msTable.Add(160.0)
+                msTable.Add(320.0)
+                msTable.Add(320.0)
+        End Select
+        
+        Select mode
+            Case MMA8652_MODS.NORMAL
+                offset = 0
+            Case MMA8652_MODS.LOW_POWER_LOW_NOISE
+                offset = 8
+            Case MMA8652_MODS.HIGH_RES
+                offset = 16
+            Case MMA8652_MODS.LOW_POWER
+                offset = 24
+        End Select
+        
+        Select frequency
+            Case MMA8652_ACTIVE_ODR._800HZ
+                ms = msTable.Item(offset)
+            Case MMA8652_ACTIVE_ODR._400HZ
+                ms = msTable.Item(offset + 1)
+            Case MMA8652_ACTIVE_ODR._200HZ
+                ms = msTable.Item(offset + 2)
+            Case MMA8652_ACTIVE_ODR._100HZ
+                ms = msTable.Item(offset + 3)
+            Case MMA8652_ACTIVE_ODR._50HZ
+                ms = msTable.Item(offset + 4)
+            Case MMA8652_ACTIVE_ODR._12_5HZ
+                ms = msTable.Item(offset + 5)
+            Case MMA8652_ACTIVE_ODR._6_25HZ
+                ms = msTable.Item(offset + 6)
+            Case MMA8652_ACTIVE_ODR._1_56HZ
+                ms = msTable.Item(offset + 7)
+        End Select
+        
+        time = ms * 255
+        
+        result.Add(time.Floor)
+        result.Add(ms)
+        Return result
+    End Function // GetMaxTimeAndTimeStep
+    
+    
+    Private Function FloatToByteRepresentation(number As Float, resolution As Float, lowThreshold As Float) As Byte
+        Return ((number - lowThreshold) / resolution).ToByte
+    End Function // FloatToByteRepresentation
+    
+    
+    'Private Function ByteToFloatRepresentation(number As Byte, resolution As Float, lowThreshold As Float) As Float
+    '    Return number * resolution + lowThreshold
+    'End Function // ByteToFloatRepresentation
+    
+    
+    Private Function Standby() As Boolean
+        'set active bit to 0 put accel in standby mode
+        Return Write(CTRL_REG1_REG, Read(CTRL_REG1_REG) & ~CTRL_REG1_ACTIVE)
+    End Function // Standby
+    
+    
+    Private Function Activate() As Boolean
+        'set active bit to put accel in active mode
+        Return Write(CTRL_REG1_REG, Read(CTRL_REG1_REG) | CTRL_REG1_ACTIVE)
+    End Function // Activate
+    
+    
+    Private Function GetActiveModeFrequency() As Byte
+        Return Read(CTRL_REG1_REG) & CTRL_REG1_DR
+    End Function // GetActiveModeFrequency
+    
+    
+    Public Function DisableSleepMode() As Boolean
+        Return EnableSleepMode(False, False)
+    End Function // DisableSleepMode
+    
+    
+    Private Function EnableSleepMode(canSleep As Boolean, setPin2 As Boolean) As Boolean
+        Dim result As Boolean = True
+        
+        result = result And Standby()
+        
+        If canSleep Then
+            result = result And Write(CTRL_REG2_REG, Read(CTRL_REG2_REG) | CTRL_REG2_SLPE)
+            result = result And Write(CTRL_REG4_REG, Read(CTRL_REG4_REG) | CTRL_REG4_INT_EN_ASLP)
+            If setPin2 Then
+                result = result And Write(CTRL_REG5_REG, Read(CTRL_REG5_REG) & ~CTRL_REG5_INT_CFG_ASLP)
+            Else
+                result = result And Write(CTRL_REG5_REG, Read(CTRL_REG5_REG) | CTRL_REG5_INT_CFG_ASLP)
+            End If
+        Else
+            result = result And Write(CTRL_REG2_REG, Read(CTRL_REG2_REG) & ~CTRL_REG2_SLPE)
+        End If
+        
+        result = result And Activate()
+        
+        Return result
+    End Function // EnableSleepMode
+    
+    
+    Public Function EnableSleepMode(duration As Float) As Boolean
+        EnableSleepMode(duration, False)
+    End Function // EnableSleepMode
+    
+    
+    'duration - period of inactivity before device enters sleep mode, in ms
+    Public Function EnableSleepMode(duration As Float, setPin2 As Boolean) As Boolean
+        Dim durationByte As Byte = 0
+        Dim result As Boolean = EnableSleepMode(True, setPin2)
+        
+        result = result And Standby()
+        
+        If GetActiveModeFrequency() = MMA8652_ACTIVE_ODR._1_56HZ Then
+            If (duration < LOW_ASLP_DURATION Or duration > HIGH_ASLP_DURATION) Then
+                Return False
+            End If
+            
+            durationByte = FloatToByteRepresentation(duration, HIGH_ASLP_COUNT_RESOLUTION, LOW_ASLP_DURATION)
+        Else
+            If (duration < LOW_ASLP_DURATION Or duration > NORMAL_ASLP_DURATION) Then
+                Return False
+            End If
+            
+            durationByte = FloatToByteRepresentation(duration, NORMAL_ASLP_COUNT_RESOLUTION, LOW_ASLP_DURATION)
+        End If
+        
+        result = result And Write(ASLP_COUNT_REG, durationByte)
+        
+        result = result And Activate()
+        
+        Return result
+    End Function // EnableSleepMode
+    
+    
+    'Configures the active output data rate, setting the sleep output data rate to the default
+    Public Function Setup(activeHz As MMA8652_ACTIVE_ODR, activePowerScheme As MMA8652_MODS) As Boolean
+        Return Setup(activeHz, activePowerScheme, MMA8652_SLEEP_ODR._50HZ, MMA8652_SMODS.NORMAL)
+    End Function // Setup
+    
+    
+    'Configures the active and sleep output data rates
+    Public Function Setup(activeHz As MMA8652_ACTIVE_ODR, activePowerScheme As MMA8652_MODS, sleepHz As MMA8652_SLEEP_ODR, sleepPowerScheme As MMA8652_SMODS) As Boolean
+        Dim result As Boolean = True
+        
+        result = result And Standby()
+        result = result And Write(CTRL_REG1_REG, (Read(CTRL_REG1_REG) & ~CTRL_REG1_DR) | activeHz)
+        result = result And Write(CTRL_REG2_REG, (Read(CTRL_REG2_REG) & ~CTRL_REG2_MODS) | activePowerScheme)
+        result = result And Write(CTRL_REG1_REG, (Read(CTRL_REG1_REG) & ~CTRL_REG1_ASLP_RATE) | sleepHz)
+        result = result And Write(CTRL_REG2_REG, (Read(CTRL_REG2_REG) & ~CTRL_REG2_SMODS) | sleepPowerScheme)
+        result = result And Activate()
+        
+        Return result
+    End Function // Setup
+    
+    
+    Public Function ConfigureOrientationInterrupt(duration As Float, bfAngle As MMA8652_BF_ANGLE, zlockAngle As Float, thsAngle As MMA8652_THS_ANGLE, hysAngle As MMA8652_HYS_ANGLE) As Boolean
+        Return ConfigureOrientationInterrupt(duration, bfAngle, zlockAngle, thsAngle, hysAngle, False)
+    End Function // ConfigureOrientationInterrupt
+    
+    
+    'ConfigureOrientationInterrupt - configures device to interrupt on orientation change
+    '
+    'duration - Time for angle to be present before interrupt in ms
+    'bfAngle - Angle for transitioning between back/front orientation
+    'zlockAngle - Angle which determines z-axis dead zone
+    'thsAngle - Angle which determins portrait to landscape transition
+    'hysAngle - Angle for widening the thsAngle
+    'setPin2 - True to route orientation interrupt to pin2
+    Public Function ConfigureOrientationInterrupt(duration As Float, bfAngle As MMA8652_BF_ANGLE, zlockAngle As Float, thsAngle As MMA8652_THS_ANGLE, hysAngle As MMA8652_HYS_ANGLE, setPin2 As Boolean) As Boolean
+        Dim durationByte As Byte
+        Dim zlockAngleByte As Byte
+        Dim result As Boolean = True
+        Dim maxTimeAndTimeStep As ListOfFloat = GetMaxTimeAndTimeStep("long")
+        
+        If (duration < 0.0 Or duration > maxTimeAndTimeStep(0)) Then
+            Return False
+        End If
+        
+        If (zlockAngle < LOW_ZLOCK_THRESHOLD Or zlockAngle > HIGH_ZLOCK_THRESHOLD) Then
+            Return False
+        End If
+        
+        durationByte = FloatToByteRepresentation(duration, maxTimeAndTimeStep(1), 0.0)
+        zlockAngleByte = FloatToByteRepresentation(zlockAngle, ZLOCK_THRESHOLD_RESOLUTION, LOW_ZLOCK_THRESHOLD)
+        
+        result = result And Standby()
+        
+        'Wakeup from orientation interrupt
+        result = result And Write(CTRL_REG3_REG, Read(CTRL_REG3_REG) | CTRL_REG3_WAKE_LNDPRT)
+        'Enable orientation interrupts
+        result = result And Write(CTRL_REG4_REG, Read(CTRL_REG4_REG) | CTRL_REG4_INT_EN_LNDPRT)
+        
+        If setPin2 Then
+            result = result And Write(CTRL_REG5_REG, Read(CTRL_REG5_REG) & ~CTRL_REG5_INT_CFG_LNDPRT)
+        Else
+            result = result And Write(CTRL_REG5_REG, Read(CTRL_REG5_REG) | CTRL_REG5_INT_CFG_LNDPRT)
+        End If
+        
+        'Clears counter (default) and enables PL detection
+        result = result And Write(PL_CFG_REG, PL_CFG_DBCNTM | PL_CFG_PL_EN)
+        
+        'Set the debounce count
+        result = result And Write(PL_COUNT_REG, durationByte)
+        'Set the back/front trip angle threshold
+        result = result And Write(PL_BF_ZCOMP_REG, (Read(PL_BF_ZCOMP_REG) & ~PL_BF_ZCOMP_BKFR) | bfAngle)
+        'Set the z-lock threshold angle
+        result = result And Write(PL_BF_ZCOMP_REG, (Read(PL_BF_ZCOMP_REG) & ~PL_BF_ZCOMP_ZLOCK) | zlockAngleByte)
+        'Set the Threshold value
+        result = result And Write(PL_THS_REG, (Read(PL_THS_REG) & ~PL_THS_THS) | thsAngle)
+        'Set the Hysteresis value
+        result = result And Write(PL_THS_REG, (Read(PL_THS_REG) & ~PL_THS_HYS) | hysAngle)
+        
+        result = result And Activate()
+        
+        Return result
+    End Function // ConfigureOrientationInterrupt
+    
+    
+    Public Function ConfigureFreefallInterrupt(threshold As Float, duration As Byte) As Boolean
+        Return ConfigureFreefallInterrupt(threshold, duration, 0x38, False)
+    End Function // ConfigureFreefallInterrupt
+    
+    
+    'ConfigureFreefallInterrupt - configures device to interrupt on freefall
+    '
+    'threshold - Trigger threshold (0.0 Gs - 8.0 Gs), 0.063mG steps
+    'duration - Count for threshold to be present before interrupt
+    'axis - Which axis to enable freefall. See datasheet to know which bits to set
+    'setPin2 - True to route orientation interrupt to pin2
+    Public Function ConfigureFreefallInterrupt(threshold As Float, duration As Byte, axis As Byte, setPin2 As Boolean) As Boolean
+        Dim thresholdByte As Byte
+        Dim result As Boolean = True
+        
+        If (threshold < LOW_GRAVITY_THRESHOLD Or threshold > HIGH_GRAVITY_THRESHOLD) Then
+            Return False
+        End If
+        
+        'Ensure that axis byte affects axis bits only in the Freefall Config Register
+        axis = axis & FF_MT_CFG_EFE
+        
+        thresholdByte = FloatToByteRepresentation(threshold, GRAVITY_THRESHOLD_RESOLUTION, 0.0)
+        
+        result = result And Standby()
+        
+        'Wake from freefall interrupt
+        result = result And Write(CTRL_REG3_REG, Read(CTRL_REG3_REG) | CTRL_REG3_WAKE_FF_MT)
+        'Enable freefall interrupts
+        result = result And Write(CTRL_REG4_REG, Read(CTRL_REG4_REG) | CTRL_REG4_INT_EN_FF_MT)
+        
+        If setPin2 Then
+            result = result And Write(CTRL_REG5_REG, Read(CTRL_REG5_REG) & ~CTRL_REG5_INT_CFG_FF_MT)
+        Else
+            result = result And Write(CTRL_REG5_REG, Read(CTRL_REG5_REG) | CTRL_REG5_INT_CFG_FF_MT)
+        End If
+        
+        'Latch events
+        result = result And Write(FF_MT_CFG_REG, Read(FF_MT_CFG_REG) | FF_MT_CFG_ELE)
+        'Enable motion flag
+        result = result And Write(FF_MT_CFG_REG, Read(FF_MT_CFG_REG) | FF_MT_CFG_OAE)
+        'Enable on axis
+        result = result And Write(FF_MT_CFG_REG, (Read(FF_MT_CFG_REG) & ~FF_MT_CFG_EFE) | axis)
+        
+        'Set Threshold
+        result = result And Write(FF_MT_THS_REG, thresholdByte)
+        'Set Duration
+        result = result And Write(FF_MT_COUNT_REG, duration)
+        
+        result = result And Activate()
+        
+        Return result
+    End Function // ConfigureFreefallInterrupt
+    
+    
+    Public Function ConfigureShockInterrupt(threshold As Float, duration As Float) As Boolean
+        Return ConfigureShockInterrupt(threshold, duration, 0x0e, False)
+    End Function // ConfigureShockInterrupt
+    
+    
+    'ConfigureShockInterrupt - configures device to interrupt on shock (currently will interupt on any axis, x,y,z axis configuration can be added later)
+    '
+    'threshold As Float - trigger threshold (0.0 Gs - 8.0 Gs), 0.063mG steps
+    'duration As Float - Duration for threshold to be present to active interrupt in ms
+    'axis - Which axis to enable shock detection. See datasheet to know which bits to set
+    'setPin2 - True to route orientation interrupt to pin2
+    Public Function ConfigureShockInterrupt(threshold As Float, duration As Float, axis As Byte, setPin2 As Boolean) As Boolean
+        Dim thresholdByte As Byte
+        Dim durationByte As Byte
+        Dim result As Boolean = True
+        Dim maxTimeAndTimeStep As ListOfFloat = GetMaxTimeAndTimeStep("long")
+        
+        If (threshold < LOW_GRAVITY_THRESHOLD Or threshold > HIGH_GRAVITY_THRESHOLD) Then
+            Return False
+        End If
+        
+        If (duration < 0.0 Or duration > maxTimeAndTimeStep(0)) Then
+            Return False
+        End If
+        
+        'Ensure that axis byte affects axis bits only in the Transient Config Register
+        axis = axis & TRANSIENT_CFG_TEFE
+        
+        'Convert threshold
+        thresholdByte = FloatToByteRepresentation(threshold, GRAVITY_THRESHOLD_RESOLUTION, 0.0)
+        durationByte = FloatToByteRepresentation(duration, maxTimeAndTimeStep(1), 0.0)
+        
+        result = result And Standby()
+        
+        'Wake from transient interrupt
+        result = result And Write(CTRL_REG3_REG, Read(CTRL_REG3_REG) | CTRL_REG3_WAKE_TRANS)
+        'Enable transient interrupts
+        result = result And Write(CTRL_REG4_REG, Read(CTRL_REG4_REG) | CTRL_REG4_INT_EN_TRANS)
+        
+        If setPin2 Then
+            result = result And Write(CTRL_REG5_REG, Read(CTRL_REG5_REG) & ~CTRL_REG5_INT_CFG_TRANS)
+        Else
+            result = result And Write(CTRL_REG5_REG, Read(CTRL_REG5_REG) | CTRL_REG5_INT_CFG_TRANS)
+        End If
+        
+        'Latch events
+        result = result And Write(TRANSIENT_CFG_REG, Read(TRANSIENT_CFG_REG) | TRANSIENT_CFG_ELE)
+        'Enable on axis
+        result = result And Write(TRANSIENT_CFG_REG, (Read(TRANSIENT_CFG_REG) & ~TRANSIENT_CFG_TEFE) | axis)
+        
+        'Set Threshold
+        result = result And Write(TRANSIENT_THS_REG, thresholdByte)
+        'Set Duration
+        result = result And Write(TRANSIENT_COUNT_REG, durationByte)
+        
+        result = result And Activate()
+        
+        Return result
+        
+    End Function // ConfigureShockInterrupt
+    
+    
+    Public Function ConfigurePulseInterrupt(threshold As Float, duration As Float, latency As Float, window As Float) As Boolean
+        Return ConfigurePulseInterrupt(threshold, duration, latency, window, False, False, 0x3f, False)
+    End Function // ConfigurePulseInterrupt
+    
+    
+    Public Function ConfigurePulseInterrupt(threshold As Float, duration As Float, latency As Float, window As Float, abortDoublePulse As Boolean, enableLowPassFilter As Boolean) As Boolean
+        Return ConfigurePulseInterrupt(threshold, duration, latency, window, abortDoublePulse, enableLowPassFilter, 0x3f, False)
+    End Function // ConfigurePulseInterrupt
+    
+    
+    'ConfigurePulseInterrupt - configures device to interrupt on pulse
+    '
+    'threshold As Float - trigger threshold (0.0 Gs - 8.0 Gs), 0.063mG steps
+    'duration As Float - Duration for threshold to be present to active interrupt in ms
+    'latency - Time to wait after pulse before interpreting further pulses as a new pulse
+    'window - Time after latency period to interpret another pulse as a double pulse
+    'axis - Which axis to enable pulse detection. See datasheet to know which bits to set
+    'setPin2 - True to route orientation interrupt to pin2
+    Public Function ConfigurePulseInterrupt(threshold As Float, duration As Float, latency As Float, window As Float, abortDoublePulse As Boolean, enableLowPassFilter As Boolean, axis As Byte, setPin2 As Boolean) As Boolean
+        Dim thresholdByte As Byte
+        Dim durationByte As Byte
+        Dim latencyByte As Byte
+        Dim windowByte As Byte
+        Dim result As Boolean = True
+        Dim durationMaxTimeAndTimeStep As ListOfFloat
+        Dim maxTimeAndTimeStep As ListOfFloat
+        
+        If enableLowPassFilter Then
+            durationMaxTimeAndTimeStep = GetMaxTimeAndTimeStep("long")
+            maxTimeAndTimeStep = GetMaxTimeAndTimeStep("xlong")
+        Else
+            durationMaxTimeAndTimeStep = GetMaxTimeAndTimeStep("short")
+            maxTimeAndTimeStep = GetMaxTimeAndTimeStep("medium")
+        End If
+        
+        If (threshold < LOW_GRAVITY_THRESHOLD Or threshold > HIGH_GRAVITY_THRESHOLD) Then
+            Return False
+        End If
+        
+        If (duration < 0.0 Or duration > durationMaxTimeAndTimeStep(0)) Then
+            Return False
+        End If
+        
+        If (latency < 0.0 Or latency > maxTimeAndTimeStep(0)) Then
+            Return False
+        End If
+        
+        If (windowByte < 0.0 Or windowByte > maxTimeAndTimeStep(0)) Then
+            Return False
+        End If
+        
+        'Ensure that axis byte affects axis bits only in the Transient Config Register
+        axis = axis & PULSE_CFG_PEFE
+        
+        thresholdByte = FloatToByteRepresentation(threshold, GRAVITY_THRESHOLD_RESOLUTION, 0.0)
+        durationByte = FloatToByteRepresentation(duration, durationMaxTimeAndTimeStep(1), 0.0)
+        latencyByte = FloatToByteRepresentation(latency, maxTimeAndTimeStep(1), 0.0)
+        windowByte = FloatToByteRepresentation(window, maxTimeAndTimeStep(1), 0.0)
+        
+        result = result And Standby()
+        
+        'Wake from pulse interrupt
+        result = result And Write(CTRL_REG3_REG, Read(CTRL_REG3_REG) | CTRL_REG3_WAKE_PULSE)
+        'Enable pulse interrupts
+        result = result And Write(CTRL_REG4_REG, Read(CTRL_REG4_REG) | CTRL_REG4_INT_EN_PULSE)
+        
+        If setPin2 Then
+            result = result And Write(CTRL_REG5_REG, Read(CTRL_REG5_REG) & ~CTRL_REG5_INT_CFG_PULSE)
+        Else
+            result = result And Write(CTRL_REG5_REG, Read(CTRL_REG5_REG) | CTRL_REG5_INT_CFG_PULSE)
+        End If
+        
+        If abortDoublePulse Then
+            result = result And Write(PULSE_CFG_REG, Read(PULSE_CFG_REG) | PULSE_CFG_DPA)
+        End If
+        
+        'Latch events
+        result = result And Write(PULSE_CFG_REG, Read(PULSE_CFG_REG) | PULSE_CFG_ELE)
+        'Enable on axis
+        result = result And Write(PULSE_CFG_REG, (Read(PULSE_CFG_REG) & ~PULSE_CFG_PEFE) | axis)
+        
+        'Set Threshold on all axis
+        result = result And Write(PULSE_THSX_REG, thresholdByte)
+        result = result And Write(PULSE_THSY_REG, thresholdByte)
+        result = result And Write(PULSE_THSZ_REG, thresholdByte)
+        
+        If enableLowPassFilter Then
+            'Enable Low-Pass Filter for pulse processing
+            'Changes the time range/time step tables
+            result = result And Write(HP_FILTER_CUTOFF_REG, Read(HP_FILTER_CUTOFF_REG) | HP_FILTER_CUTOFF_Pulse_LPF_EN)
+        End If
+        
+        'Set Duration
+        result = result And Write(PULSE_TMLT_REG, durationByte)
+        'Set Latency
+        result = result And Write(PULSE_LTCY_REG, latencyByte)
+        'Set Window
+        result = result And Write(PULSE_WIND_REG, windowByte)
+        
+        result = result And Activate()
+        
+        Return result
+        
+    End Function // ConfigurePulseInterrupt
+    
+    
+    Public Function GetIntSource() As ListOfString
+        Dim intSource As Byte = Read(INT_SOURCE_REG)
+        Dim result As ListOfString = New ListOfString
+        
+        If (intSource & INT_SOURCE_SRC_ASLP) = INT_SOURCE_SRC_ASLP Then
+            result.Add("autosleep")
+        ElseIf (intSource & INT_SOURCE_SRC_FF_MT) = INT_SOURCE_SRC_FF_MT Then
+            result.Add("freefall")
+        ElseIf (intSource & INT_SOURCE_SRC_LNDPRT) = INT_SOURCE_SRC_LNDPRT Then
+            result.Add("orientation")
+        ElseIf (intSource & INT_SOURCE_SRC_PULSE) = INT_SOURCE_SRC_PULSE Then
+            result.Add("pulse")
+        ElseIf (intSource & INT_SOURCE_SRC_TRANS) = INT_SOURCE_SRC_TRANS Then
+            result.Add("shock")
+        End If
+        
+        Return result
+    End Function // GetIntSource
+    
+    
+    Public Function Autosleep() As String
+        Dim sysmod As Byte = Read(SYSMOD_REG)
+        
+        If (sysmod & SYSMOD_SYSMOD) = SYSMOD_STANDBY Then
+            Return "standby"
+        ElseIf (sysmod & SYSMOD_SYSMOD) = SYSMOD_WAKE Then
+            Return "active"
+        ElseIf (sysmod & SYSMOD_SYSMOD) = SYSMOD_SLEEP Then
+            Return "sleep"
+        End If
+    End Function // Autosleep
+    
+    
+    Public Function Freefall() As ListOfString
+        Dim freefallStatus As Byte = Read(FF_MT_SRC_REG)
+        Dim result As ListOfString = New ListOfString
+        
+        If (freefallStatus & FF_MT_SRC_XHE) = FF_MT_SRC_XHE Then
+            result.Add("x")
+            If (freefallStatus & FF_MT_SRC_XHP) = FF_MT_SRC_XHP Then
+                result.Add("neg")
+            Else
+                result.Add("pos")
+            End If
+        ElseIf (freefallStatus & FF_MT_SRC_YHE) = FF_MT_SRC_YHE Then
+            result.Add("y")
+            If (freefallStatus & FF_MT_SRC_YHP) = FF_MT_SRC_YHP Then
+                result.Add("neg")
+            Else
+                result.Add("pos")
+            End If
+        ElseIf (freefallStatus & FF_MT_SRC_ZHE) = FF_MT_SRC_ZHE Then
+            result.Add("z")
+            If (freefallStatus & FF_MT_SRC_ZHP) = FF_MT_SRC_ZHP Then
+                result.Add("neg")
+            Else
+                result.Add("pos")
+            End If
+        End If
+        
+        Return result
+    End Function // Freefall
+    
+    
+    Public Function Orientation() As ListOfString
+        Dim plStatus As Byte = Read(PL_STATUS_REG)
+        Dim result As ListOfString = New ListOfString
+        
+        Select plStatus & PL_STATUS_LAPO
+            Case 0x00
+                result.Add("portrait up")
+            Case 0x02
+                result.Add("portrait down")
+            Case 0x04
+                result.Add("landscape right")
+            Case 0x06
+                result.Add("landscape left")
+        End Select
+        
+        If (plStatus & PL_STATUS_BAFRO) = 1 Then
+            result.Add("back")
+        Else
+            result.Add("front")
+        End If
+        
+        Return result
+    End Function // Orientation
+    
+    
+    Public Function Pulse() As String
+        Dim pulseStatus As Byte = Read(PULSE_SRC_REG) & PULSE_SRC_DPE
+        Dim result As ListOfString = New ListOfString
+        
+        If pulseStatus = PULSE_SRC_DPE Then
+            Return "double"
+        Else
+            Return "single"
+        End If
+        
+    End Function // Pulse
+    
+    
+    Public Function Shock() As ListOfString
+        Dim shockStatus As Byte = Read(TRANSIENT_SRC_REG)
+        Dim result As ListOfString = New ListOfString
+        
+        If (shockStatus & TRANSIENT_SRC_XTRANSE) = TRANSIENT_SRC_XTRANSE Then
+            result.Add("x")
+            If (shockStatus & TRANSIENT_SRC_X_TRANS_POL) = TRANSIENT_SRC_X_TRANS_POL Then
+                result.Add("neg")
+            Else
+                result.Add("pos")
+            End If
+        ElseIf (shockStatus & TRANSIENT_SRC_YTRANSE) = TRANSIENT_SRC_YTRANSE Then
+            result.Add("y")
+            If (shockStatus & TRANSIENT_SRC_Y_TRANS_POL) = TRANSIENT_SRC_Y_TRANS_POL Then
+                result.Add("neg")
+            Else
+                result.Add("pos")
+            End If
+        ElseIf (shockStatus & TRANSIENT_SRC_ZTRANSE) = TRANSIENT_SRC_ZTRANSE Then
+            result.Add("z")
+            If (shockStatus & TRANSIENT_SRC_Z_TRANS_POL) = TRANSIENT_SRC_Z_TRANS_POL Then
+                result.Add("neg")
+            Else
+                result.Add("pos")
+            End If
+        End If
+        
+        Return result
+    End Function // Shock
+    
+    
+    Public Function GetVersion() As String
+        Return VERSION
+    End Function // GetVersion
+    
+    
+End Class

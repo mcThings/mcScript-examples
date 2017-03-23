@@ -1,0 +1,346 @@
+﻿// 205 Demo Test
+// Requires TempSensor, MQTT, LIS2DH12 and Time libraries
+// Note this requires the 14th Jan 2017 MQTT library, previous versions cause runtime error.
+// Also needs LIS2DH12 V 4 or above library.
+// Publishes status every 1 minute/10 seconds for testing (unless disabled) to mqtt topic "MCThings/" followed by device uid
+// Publishing of data (and LED indication) can be disabled (to save battery) by publishing "True" or "False" to "MCThings/" <device uid>  "/EnablePublish" - enabled by default
+// Publishes data in beacons also (always).
+// Uses accelerometer detection to sense motion, then publishes location via GPS fix
+// you can set variable Publish_on_Motion to publish GPS location on motion start, or when motion stops
+// NOTE: need unobstructed access to satelites to get valid fix (or you get NaN for lat, long)
+// Obviously just a testbed, you would really need to publish via SigFox - if we had a SigFox network in Canada.
+
+// Indicators -  Led2 = activity and push button settings, Led3 = GPS active
+// Pushbuttons - button 1 = trigger GPS, button 2 short press = toggle GPS on start/end of motion, Long press = toggle publishing on/off
+
+// N Waterton 14th January 2017 V1.0: Beta Release - first cut
+// N Waterton 16th January 2017 V1.1: Added Time Library
+
+Define PinMode Pin3 As DigitalOutput Alias EnableBatteryMeasurement
+Define PinMode Pin8 As AnalogInput Alias BatteryVoltage
+'Define PinMode Pin2 As PwmOutput
+
+Class Main
+    Const Version As String = "V1.1"
+    Shared data As dataType
+    Shared Sub_Topic_Publish_Enable As String
+    Shared Sub_Topic_Publish_on_Motion As String
+    Shared Publish_data As Boolean
+    Shared Publish_on_Motion As Boolean
+    Shared accel As LIS2DH12
+    Shared last_lat As Float
+    Shared last_long As Float
+    Shared last_GPS_fix As String
+    Shared PublishingLocation As Boolean //used to indicate GPS busy
+    Shared Motion_Detected As Boolean //used to detect start of motion
+    Shared End_Motion_flag As Boolean //used to detect end of motion
+    'GNSS Configuration Constants
+    Const GNSS_TIMEOUT_uS As Integer = 120000000 'GNSS Timeout = 120s
+    Const GNSS_MIN_SAT_COUNT As Integer = 3 'GNSS minimum sats = 3
+    
+    Shared Event Boot()
+        Publish_data = True
+        //Publish_on_Motion = True
+        PublishingLocation = False
+        last_lat = Float.NaN
+        last_long = Float.NaN
+        last_GPS_fix = "None"
+        Sub_Topic_Publish_Enable = "MCThings/" + Device.mcUID().ToString("X8") + "/EnablePublish"
+        Sub_Topic_Publish_on_Motion = "MCThings/" + Device.mcUID().ToString("X8") + "/PublishMotion"
+        MQTT.Subscribe(Sub_Topic_Publish_Enable)
+        MQTT.Subscribe(Sub_Topic_Publish_on_Motion)
+        MQTT.Publish("Status", "Booted: " + Version)
+        accel = New LIS2DH12()
+        If accel.online Then
+            MQTT.Publish("Status", "LIS2DH12TR Sensor Online")
+            If LIS2DH12.VERSION <= 3 Then
+                MQTT.Publish("Status", "LIS2DH12 Library is out of Date, please upgrade!")
+            Else
+                'later versions of library
+                'set up mode, all axis
+                accel.Setup(LIS2DH12.LOW_POWER_MODE, LIS2DH12.DATA_RATE_50HZ, LIS2DH12.SCALE_2G)
+                'set accelerometer to cause interrupt if accelation is > 1.15Gs for longer than 2ms (any axis)
+                accel.ConfigureMotionInterrupt(1.15, 20.0)
+            End If
+        Else
+            MQTT.Publish("Status", "Accel Sensor Offline")
+        End If
+        //MQTT.use_queue = True //enable MQTT queueing - try to work around "stop publishing bug"
+        //MQTT.use_delay = True //enable MQTT delay - try to work around "stop publishing bug"
+    End Event
+    
+    Shared Event NewGateway()
+        MQTT.Subscribe(Sub_Topic_Publish_Enable)
+        MQTT.Subscribe(Sub_Topic_Publish_on_Motion)
+    End Event
+    
+    Public Function GetTimestamp() As String
+        'default format (milliseconds format, epoch is unix style)
+        Return Timing.GetTimestamp()
+    End Function
+    
+    Public Sub setLed2(on As Boolean)
+        If Not on Then
+            Led2 = False //turn LED off
+        Else
+            If Not Publish_data Then //dont turn on LED if not publishing (battery saving)
+                Return
+            Else
+                Led2 = True //turn LED on
+            End If
+        End If
+    End Sub
+    
+    Public Sub setLed3(on As Boolean)
+        If Not on Then
+            Led3 = False //turn LED off
+        Else
+            If Not Publish_data Then //dont turn on LED if not publishing (battery saving)
+                Return
+            Else
+                Led3 = True //turn LED on
+            End If
+        End If
+    End Sub
+    
+    '    Public Sub SetPwm(brightness As Byte)
+    '        //PWM test LED3
+    '        Dim pwm1kHz As Pwm
+    '        Dim frequency As Integer = 1000
+    '        Dim percent As Integer = ((brightness.ToInteger* 100) / frequency).ToInteger()
+    '        pwm1kHz = Pwm.Create (frequency) // create PWM with 1000μs period
+    '        pwm1kHz.SetDutyCycle(Pin2, percent) // set PWM to brightness % duty cycle on Pin2
+    '        pwm1kHz.Start() // start PWM
+    '    End Sub
+    
+    Public Sub Led2Flash()
+        Led2 = True
+        Thread.Sleep(3000)
+        Led2 = False
+    End Sub
+    
+    Public Sub Led3Flash()
+        Led3 = True
+        Thread.Sleep(3000)
+        Led3 = False
+    End Sub
+    
+    Shared Event SW1Changed()
+        If SW1 Then
+            //button pressed (actually released - active low) start GPS on button press (for testing)
+            PublishLocation()
+        End If
+    End Event
+    
+    Shared Event SW2Changed()
+        Thread.Sleep(10000) //10ms delay to debounce
+        Thread.ClearHardwareEvent()
+        If Not SW2 Then //(button pressed)
+            Led2Flash()
+            Thread.Sleep(1000000) //wait 1 second
+            If Not SW2 Then //button still pressed = long press
+                Led2Flash()
+                Publish_data = Not Publish_data //toggle publishing
+                If Publish_data Then //double flash Led1 = publishing on
+                    Led2Flash()
+                    Thread.Sleep(50000)
+                    Led2Flash()
+                Else //single flash = publishing off
+                    Led2Flash()
+                End If
+            Else
+                //short press = Switch between GPS on motion, or end of motion (easy to see which is active, so no indication)
+                Publish_on_Motion = Not Publish_on_Motion
+            End If
+            PublishSettings()
+        End If
+    End Event
+    
+    Shared Event AccelerometerInt1()
+        'debounce interrupt
+        Thread.Sleep(100000) //100ms delay to limit interrupts...
+        Thread.ClearHardwareEvent()
+        
+        'Read Int source register to clear interrupt and get source
+        Dim Int1Source As ListOfString = accel.GetInt1Source()
+        If Int1Source.Count> 0 Then 'if we have an interrupt (of any kind, x,y or z)
+            'interrupt generated (can read the interrupt source from ListofString if you want)
+            Led2Flash() //flash LED so that we can see motion deteection.
+            
+            If Publish_on_Motion Then
+                PublishLocation()
+            Else
+                Motion_Detected = True
+                End_Motion_flag = True
+            End If
+        End If 
+    End Event
+    
+    Shared Event MotionCheck() RaiseEvent Every 30 Seconds
+        If Not Motion_Detected And End_Motion_flag Then //no motion in last 30 seconds
+            End_Motion_flag = False //prevent retriggering unless motion occurs
+            PublishLocation()
+        End If
+        Motion_Detected = False
+    End Event
+    
+    Public Sub PublishLocation()
+        //Get Lat Long from GPS
+        If PublishingLocation Then //exit if we have already started GPS
+            Return
+        End If
+        PublishingLocation = True
+        //Led3Flash()
+        setLed3(True) //hard to tell which LED is flashing (as they are all red) so just turn it so so that we can see GPS active.
+        Device.StartGPS(GNSS_TIMEOUT_uS, GNSS_MIN_SAT_COUNT)
+        //make json data
+        Dim jData As Json = New Json
+        jData.Add("time", GetTimestamp())
+        jData.Add("GPSActive", PublishingLocation)
+        MQTT.Publish("Data", jData)
+        Thread.ClearHardwareEvent()
+    End Sub
+    
+    Shared Event LocationDelivery()
+        'Called when GNSS location acquired or timeout occurred
+        'Get latitude
+        Dim Lat As Float = Device.GetLatitude()
+        'Get longitude
+        Dim Lon As Float = Device.GetLongitude()
+        'Get GNSS fix time
+        Dim fixTime As Integer = (Device.GetGpsFixTime() / 1000000).ToInteger()
+        
+        If Not Lat.IsNaN() And Not Lon.IsNaN() Then
+            last_lat = Lat
+            last_long = Lon
+            last_GPS_fix = DateTime.Now().ToString("Z")
+            'last_GPS_fix = GetTimestamp()
+        End If
+        
+        PublishingLocation = False
+        
+        Dim jData As Json = New Json
+        jData.Add("time", GetTimestamp())
+        jData.Add("last_GPS_fix", last_GPS_fix)
+        jData.Add("latitude", Lat)
+        jData.Add("longitude", Lon)
+        jData.Add("GPS_fix_time", fixTime)
+        jData.Add("GPSActive", PublishingLocation)
+        MQTT.Publish("Data", jData)
+        
+        //Led3Flash()
+        setLed3(False)
+    End Event
+    
+    Shared Event SubscriptionDelivery()
+        Dim msg As Message = Lplan.GetDelivery()
+        'Dim payload As ListOfByte = msg.PayLoad
+        Dim tmp As Boolean = True 'payload.ExtractFloat(0)
+        Dim tmp_str As String = msg.PayLoad.ToString()
+        Dim topic As String = msg.Topic.ToString()
+        'MQTT.Publish("Status", "Received Message: " + topic + " : " + tmp_str)
+        If topic = Sub_Topic_Publish_Enable Then
+            If Boolean.TryConvert(tmp_str, tmp) Then
+                Publish_data = tmp
+                Dim jData As Json = New Json
+                jData.Add("time", GetTimestamp())
+                jData.Add("PublishEnable", Publish_data)
+                MQTT.Publish("Data", jData)
+            Else
+                MQTT.Publish("Status", "PublishEnable" + tmp_str + " :Boolean Conversion failed")
+            End If
+        ElseIf topic = Sub_Topic_Publish_on_Motion Then
+            If Boolean.TryConvert(tmp_str, tmp) Then
+                Publish_on_Motion = tmp
+                Dim jData As Json = New Json
+                jData.Add("time", GetTimestamp())
+                jData.Add("Publish_on_Motion", Publish_on_Motion)
+                MQTT.Publish("Data", jData)
+            Else
+                MQTT.Publish("Status", "Publish_on_Motion" + tmp_str + " :Boolean Conversion failed")
+            End If  
+        Else
+            MQTT.Publish("Unknown", tmp_str)
+        End If
+    End Event
+    
+    Public Function GetBatteryVoltage() As Integer
+        'Enable battery voltage measurement resistor divider
+        EnableBatteryMeasurement = True
+        Thread.Sleep(20000)
+        Dim voltgeMv As Integer = BatteryVoltage
+        EnableBatteryMeasurement = False
+        
+        'Convert measured voltage to actual battery voltage
+        'Battery voltage scaler based on mcDemo205 hardware
+        Dim batVoltage As Integer = (voltgeMv * 3.546).ToInteger()
+        
+        Return batVoltage //In mV
+    End Function
+    
+    Public Sub PublishSettings()
+        //make json data
+        Dim jData As Json = New Json
+        jData.Add("time", GetTimestamp())
+        jData.Add("PublishEnable", Publish_data)
+        jData.Add("Publish_on_Motion", Publish_on_Motion)
+        MQTT.Publish("Data", jData)
+    End Sub
+    
+    Shared Event Status() RaiseEvent Every 5 Minutes //publish status of GPS on Motion Detection start/stop, and publish on/off
+        If Publish_data Then //if data publishing is on, do nothing.
+            Return
+        End If
+        PublishSettings()
+    End Event
+    
+    Shared Event Publish() RaiseEvent Every 1 Minutes
+        Dim Uptime As Integer = Device.Uptime()
+        Dim UptimeString As String = Timing.getUptimeString()
+        Dim BattVolt As Integer = GetBatteryVoltage()
+        Dim TempC As Float = TempSensor.GetTemp
+        If Publish_data Then
+            //make json data
+            Dim jData As Json = New Json
+            jData.Add("time", GetTimestamp())
+            jData.Add("Uptime", Uptime)        
+            jData.Add("UptimeString", UptimeString)
+            jData.Add("BatteryVoltage", BattVolt)
+            jData.Add("Temperature", TempC)
+            '            jData.Add("last_lat", last_lat)
+            '            jData.Add("last_long", last_long)
+            '            jData.Add("last_GPS_fix", last_GPS_fix)
+            '            jData.Add("GPSActive", PublishingLocation)
+            jData.Add("PublishEnable", Publish_data)
+            jData.Add("Publish_on_Motion", Publish_on_Motion)
+            MQTT.Publish("Data", jData)
+        End If
+        //make json data
+        Dim jgps As Json = New Json
+        jgps.Add("time", GetTimestamp())
+        jgps.Add("last_lat", last_lat)
+        jgps.Add("last_long", last_long)
+        jgps.Add("last_GPS_fix", last_GPS_fix)
+        jgps.Add("GPSActive", PublishingLocation)
+        MQTT.Publish("Data", jgps)
+        
+        Select data
+            Case dataType.UPTIME
+                If Uptime < Short.MaxValue Then
+                    MQTT.BeaconPublish(dataType.UPTIME, Uptime)
+                End If
+                data = dataType.BATTVOLTAGE
+            Case dataType.BATTVOLTAGE
+                MQTT.BeaconPublish(dataType.BATTVOLTAGE, BattVolt)
+                data = dataType.TEMPERATURE
+            Case dataType.TEMPERATURE
+                MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
+                data = dataType.UPTIME
+            Case Else
+                MQTT.Publish("Status", "OnLine")
+                data = dataType.UPTIME
+        End Select
+        Led2Flash()
+    End Event
+    
+End Class

@@ -1,0 +1,64 @@
+﻿//
+// This example logs the mc Unique IDentifier (mcUID), Temperature and battery Voltage
+// to MQTT.
+//
+
+Class Events
+    Shared Event Publish() RaiseEvent Every 1 Minutes
+        LedGreen = True
+        Dim Sensors As Values = New Values
+        Lplan.Publish("MCThings/" + Sensors.mcUIDString + "/Uptime", Sensors.GetUptime)
+        Lplan.Publish("MCThings/" + Sensors.mcUIDString + "/BatteryVoltage", Sensors.GetBattVoltage)
+        Lplan.Publish("MCThings/" + Sensors.mcUIDString + "/Temperature", Sensors.GetTemp) 
+        LedGreen = False
+    End Event  
+End Class
+
+Class Values    
+    Public mcUIDString As String = Device.mcUID().ToString()
+    
+    Public Function GetTemp() As ListOfByte
+        //LedGreen = True
+        
+        Dim TempC As Float = TempSensor.GetTemp
+        Dim TempString As String = TempC.ToString()
+        Dim Temppayload As ListOfByte = New ListOfByte()
+        
+        Temppayload.Add(TempString)
+        Return Temppayload
+        //Lplan.Publish("MCThings/" + mcUIDString + "/Temperature", Temppayload)
+        
+        //LedGreen = False
+    End Function
+    
+    Public Function GetUptime() As ListOfByte
+        //LedRed = True
+        
+        Dim uptime As Integer = Device.Uptime()
+        Dim uptimeString As String = uptime.ToString()
+        Dim Uptimepayload As ListOfByte = New ListOfByte()
+        
+        Uptimepayload.Add(uptimeString)
+        Return Uptimepayload
+        
+        //Lplan.Publish("MCThings/" + mcUIDString + "/Uptime", Uptimepayload)
+        
+        //LedRed = False
+    End Function
+    
+    //Shared Event CheckVoltage() RaiseEvent Every 2 Days
+    Public Function GetBattVoltage() As ListOfByte
+        Dim BattVolt As Short = Device.BatteryVoltage
+        Dim BattString As String = BattVolt.ToString()
+        Dim Battpayload As ListOfByte = New ListOfByte()
+        Battpayload.Add(BattString)
+        Return Battpayload
+        //Lplan.Publish("MCThings/" + mcUIDString + "/BatteryVoltage", Battpayload)
+        //If BattVolt < 2200 Then 
+        //Lplan.IFTTT("YOURIFTTTKETHERE", "ProductionRoomBattery/YOURTOPICHERE") 
+        //Else
+        
+        //End If 
+        
+    End Function 
+End Class 

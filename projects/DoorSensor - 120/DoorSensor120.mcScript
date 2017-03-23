@@ -1,0 +1,305 @@
+﻿//LIS2DH12 Library Test - Door Knock and Status (open/close) Sensor
+//Requires TempSensor, MQTT, Time and LIS2DH12 libraries
+//Publishes status every 1 minute (unless disabled) to mqtt topic "MCThings/" followed by device uid
+//publishes data in beacons
+//Uses accelerometer transient detection to sense knocking on the door
+
+// N Waterton 9th September 2016  V1.01: Beta Release - changed door status reporting frequency to fix bug in beacon data reporting...
+// N Waterton 10th September 2016 V1.02: Beta Release - removed uptime reporting bug
+// N Waterton 1st October 2016 V1.03: Beta Release - changed support for MMA8652 to LIS2DH12 (120 module accelerometer)
+// N Waterton 17th January 2017 V1.1: Beta Release - Completely revised to match up with 110 module code.
+
+Class Main
+    
+    Const Version As String = "V1.1"
+    Shared data As dataType
+    Shared Sub_Topic_Publish_Enable As String
+    Shared Sub_Topic_Knock_Enable As String
+    Shared Knock_Enable As Boolean
+    Shared Publish_data As Boolean
+    Shared accel As LIS2DH12
+    Shared timer1 As Timing
+    Shared TimeSinceKnockTriggered As Integer
+    Shared TimeSinceDoorClosed As Integer
+    Const KnockLockoutPeriod As Integer = 60 //no repeat knocks within 60 seconds if triggered
+    Const DoorLockoutPeriod As Integer = 5 //no detection until door has been closed for 5 seconds
+    Shared Door_Status As Boolean
+    
+    Shared Event Boot()
+        Publish_data = True
+        Sub_Topic_Publish_Enable = "MCThings/" + Device.mcUID().ToString("X8") + "/EnablePublish"
+        Sub_Topic_Knock_Enable = "MCThings/" + Device.mcUID().ToString("X8") + "/EnableDoorKnock"
+        TimeSinceKnockTriggered = 0 - KnockLockoutPeriod //so door knock detection is enabled on boot
+        TimeSinceDoorClosed = 0
+        MQTT.Subscribe(Sub_Topic_Publish_Enable)
+        MQTT.Subscribe(Sub_Topic_Knock_Enable) //note, cannot debug in run mode on mc-dev with subscriptions enabled.
+        MQTT.Publish("Status", "Booted: " + Version)
+        accel = New LIS2DH12()
+        Knock_Enable = False
+        If accel.online Then
+            MQTT.Publish("Status", "LIS2DH12TR Sensor Online")
+            If LIS2DH12.VERSION < 5 Then
+                MQTT.Publish("Status", "LIS2DH12 Library is out of Date, please upgrade!")
+            Else
+                'later versions of library
+                'set up mode, Z axis only
+                accel.Setup(LIS2DH12.LOW_POWER_MODE, LIS2DH12.DATA_RATE_50HZ, LIS2DH12.SCALE_2G, LIS2DH12.Z_AXIS)
+                'set accelerometer to cause interrupt if accelation is > 0.15Gs for longer than 20ms
+                '20 ms is lowest setting at 50Hz (1 ODR cycle)
+                'accel.EnableAxis(LIS2DH12.X_AXIS | LIS2DH12.Y_AXIS | LIS2DH12.Z_AXIS)
+                accel.ConfigureTransientInterrupt(0.15, 20.0)
+                'accel.ConfigureClickInterrupt(0.05, 2000.0, 2000.0, 2000.0, (LIS2DH12.ZD | LIS2DH12.ZS))
+                'accel.SetInterruptEnable1Bits(LIS2DH12.INT1_AOI1_BIT | LIS2DH12.INT1_CLICK_BIT)
+                Knock_Enable = True
+                Dim accelconfig As Json = accel.ReadConfiguration(1)
+                MQTT.Publish("accel", accelconfig)
+                'accelconfig = accel.ReadConfiguration(3)
+                'MQTT.Publish("click", accelconfig)
+            End If
+        Else
+            MQTT.Publish("Status", "Accel Sensor Offline")
+        End If
+        timer1 = New Timing()
+        Door_Status = Main.ReedSwitch()
+        Main.PublishDoorStatus() //publish door status on boot
+        //MQTT.use_queue = True //enable MQTT queueing - try to work around "stop publishing bug"
+        //MQTT.use_delay = True //enable MQTT delay - try to work around "stop publishing bug"
+    End Event
+    
+    Shared Event NewGateway()
+        MQTT.Subscribe(Sub_Topic_Publish_Enable)
+        MQTT.Subscribe(Sub_Topic_Knock_Enable)
+    End Event
+    
+    Shared Function setLedGreen(on As Boolean) As Nothing
+        If Not on Then
+            LedGreen = False //turn LED off
+        Else
+            If Publish_data Then //dont turn on LED if not publishing (battery saving)
+                LedGreen = True //turn LED on
+            Else
+                LedGreen = False //turn LED off
+            End If
+        End If
+    End Function
+    
+    Shared Function setLedRed(on As Boolean) As Nothing
+        If Not on Then
+            LedRed = False //turn LED off
+        Else
+            If Publish_data Then //dont turn on LED if not publishing (battery saving)
+                LedRed = True //turn LED on
+            Else
+                LedRed = False //turn LED off
+            End If
+        End If
+    End Function
+    
+    Shared Function LedGreenFlash() As Nothing
+        LedGreen = True
+        Thread.Sleep(3000)
+        LedGreen = False
+    End Function
+    
+    Shared Function LedRedFlash() As Nothing
+        LedRed = True
+        Thread.Sleep(3000)
+        LedRed = False
+    End Function
+    
+    Shared Function ReedSwitch() As Boolean
+        Return ReedSwitch
+    End Function
+    
+    Shared Function isKnockEnabled() As Boolean
+        //should we be looking for door knocks?
+        Return (Not Door_Status And Knock_Enable And (Device.Uptime() - TimeSinceKnockTriggered > KnockLockoutPeriod) And (Device.Uptime() - TimeSinceDoorClosed > DoorLockoutPeriod))
+    End Function
+    
+    Shared Event AccelerometerInt1()
+        While Not Main.isKnockEnabled() //dont process interrupts while door is open or knock not enabled for some other reason
+            If Not Knock_Enable Then //disable accelerator by not processing interrupts, if not enabled.
+                Return
+            End If
+            Thread.Sleep(5000000) // 5 s delay
+            Thread.ClearHardwareEvent()
+        End While
+        Thread.Sleep(10000) // 10ms delay
+        Thread.ClearHardwareEvent()
+        
+        'Read Click source register to clear interrupt and get source
+        Dim ClickSource As ListOfString = accel.GetIntClickSource()
+        If ClickSource.Count> 0 Then 'if we have an interrupt (of any kind, x,y or z)
+            'interrupt generated (can read the interrupt source from ListofString if you want)
+            
+            Main.setLedRed(True)
+            Main.DetectDoorKnock()
+            Main.setLedRed(False)
+            
+            '            Dim jClick As Json As New json 'debugging
+            '            For Each interrupt In ClickSource
+            '                jClick.Add(interrupt, True)
+            '            Next
+            '            MQTT.Publish("Click", jClick)
+            
+        End If
+        
+        'Read Int source register to clear interrupt and get source
+        Dim Int1Source As ListOfString = accel.GetInt1Source()
+        If Int1Source.Count> 0 Then 'if we have an interrupt (of any kind, x,y or z)
+            'interrupt generated (can read the interrupt source from ListofString if you want)
+            
+            Main.setLedGreen(True)
+            Main.DetectDoorKnock()
+            Main.setLedGreen(False)
+            
+        End If 
+    End Event
+    
+    Shared Sub DetectDoorKnock()
+        Dim timeSinceLastTransient As Integer = timer1.GetTimeSpan()
+        'MQTT.Publish("Test timespan", timeSinceLastTransient)
+        'If at least two transients within 1.5 seconds (note sleep time is 2 seconds)
+        If timeSinceLastTransient < 1500 And timeSinceLastTransient > 100 Then //debounce door by setting timeSinceLastTransient > 100ms
+            Main.Trigger_DoorKnock(1000)
+        End If
+    End Sub
+    
+    Shared Sub Trigger_DoorKnock(duration As Integer) //pause duration in seconds
+        If Main.isKnockEnabled() Then
+            Thread.Sleep(duration * 1000) //delay in ms - about 3 s seems right
+            If Main.isKnockEnabled() Then //If door is still closed etc (prevent door opening transients from triggering)
+                TimeSinceKnockTriggered = Device.Uptime()
+                Dim jData As Json = New Json
+                Dim timestamp As String = Timing.GetTimestamp()
+                jData.Add("time", timestamp)
+                jData.Add("Doorknock", True)
+                MQTT.Publish("Data", jData)
+            End If
+        End If
+    End Sub
+    
+    Shared Sub PublishDoorStatus()
+        //Thread.ClearHardwareEvent()
+        Thread.Sleep(10000) '10ms debounce delay
+        If Door_Status <> Main.ReedSwitch() Then
+            Door_Status = Main.ReedSwitch()
+            Dim jData As Json = New Json
+            Dim timestamp As String = Timing.GetTimestamp()
+            jData.Add("time", timestamp)
+            jData.Add("Door", Door_Status)
+            MQTT.Publish("Data", jData)
+            MQTT.BeaconPublish(dataType.DOOR, Door_Status)
+            Main.LedGreenFlash()
+        End If
+    End Sub
+    
+    Shared Event ReedSwitchChanged()
+        TimeSinceDoorClosed = Device.Uptime()
+        TimeSinceKnockTriggered = 0
+        Main.PublishDoorStatus()
+        //Main.PublishDoorStatus() //call twice to deal with rapid door cycling...
+    End Event
+    
+    Shared Event SubscriptionDelivery()
+        Dim msg As Message = Lplan.GetDelivery()
+        'Dim payload As ListOfByte = msg.PayLoad
+        Dim tmp As Boolean = True 'payload.ExtractFloat(0)
+        Dim tmp_str As String = msg.PayLoad.ToString()
+        Dim topic As String = msg.Topic.ToString()
+        'MQTT.Publish("Status", "Received Message: " + topic + " : " + tmp_str)
+        If topic = Sub_Topic_Publish_Enable Then
+            If Boolean.TryConvert(tmp_str, tmp) Then
+                Publish_data = tmp
+                Dim jData As Json = New Json
+                Dim timestamp As String = Timing.GetTimestamp()
+                jData.Add("time", timestamp)
+                jData.Add("PublishEnable", Publish_data)
+                MQTT.Publish("Data", jData)
+            Else
+                MQTT.Publish("Status", "PublishEnable" + tmp_str + " :Boolean Conversion failed")
+            End If
+        ElseIf topic = Sub_Topic_Knock_Enable Then
+            If Boolean.TryConvert(tmp_str, tmp) Then
+                Knock_Enable = tmp
+                If accel.online Then
+                    Dim jData As Json = New Json
+                    Dim timestamp As String = Timing.GetTimestamp()
+                    jData.Add("time", timestamp)
+                    jData.Add("KnockEnable", Knock_Enable)
+                    MQTT.Publish("Data", jData)
+                    If Knock_Enable Then //clear accelerator interrupts to enable it
+                        accel.GetInt1Source()
+                    End If
+                Else
+                    MQTT.Publish("Status", "Accel Sensor Offline")
+                    Dim jData As Json = New Json
+                    Dim timestamp As String = Timing.GetTimestamp()
+                    jData.Add("time", timestamp)
+                    jData.Add("KnockEnable", Knock_Enable)
+                    MQTT.Publish("Data", jData)
+                End If
+            Else
+                MQTT.Publish("Status", "KnockEnable" + tmp_str + " :Boolean Conversion failed")
+            End If  
+        Else
+            MQTT.Publish("Unknown", tmp_str)
+        End If
+    End Event
+    
+    Shared Event Status() RaiseEvent Every 5 Minutes //publish status of Knock Detection on/off, and publish on/off
+        If Publish_data Then //if data publishing is on, do nothing.
+            Return
+        End If
+        //make json data
+        Dim jData As Json = New Json
+        Dim timestamp As String = Timing.GetTimestamp()
+        jData.Add("time", timestamp)
+        jData.Add("KnockEnable", Knock_Enable)
+        jData.Add("PublishEnable", Publish_data)
+        MQTT.Publish("Data", jData)
+    End Event
+    
+    Shared Event Publish() RaiseEvent Every 1 Minutes
+        Dim Uptime As Integer = Device.Uptime()
+        Dim UptimeString As String = Timing.getUptimeString()
+        Dim BattVolt As Integer = Device.BatteryVoltage()
+        Dim TempC As Float = TempSensor.GetTemp
+        Door_Status = ReedSwitch
+        If Publish_data Then
+            //make json data
+            Dim jData As Json = New Json
+            Dim timestamp As String = Timing.GetTimestamp()
+            jData.Add("time", timestamp)
+            jData.Add("Uptime", Uptime)
+            jData.Add("UptimeString", UptimeString)
+            jData.Add("BatteryVoltage", BattVolt)
+            jData.Add("Temperature", TempC)
+            jData.Add("Door", Door_Status)
+            jData.Add("KnockEnable", Knock_Enable)
+            jData.Add("PublishEnable", Publish_data)
+            MQTT.Publish("Data", jData)
+        End If
+        
+        Select data
+            Case dataType.UPTIME
+                If Uptime < Short.MaxValue Then
+                    MQTT.BeaconPublish(dataType.UPTIME, Uptime)
+                End If
+                data = dataType.BATTVOLTAGE
+            Case dataType.BATTVOLTAGE
+                MQTT.BeaconPublish(dataType.BATTVOLTAGE, BattVolt)
+                data = dataType.TEMPERATURE
+            Case dataType.TEMPERATURE
+                MQTT.BeaconPublish(dataType.TEMPERATURE, TempC)
+                data = dataType.DOOR
+            Case dataType.DOOR
+                MQTT.BeaconPublish(dataType.DOOR, Door_Status)
+                data = dataType.UPTIME
+            Case Else
+                MQTT.Publish("Status", "OnLine")
+                data = dataType.UPTIME
+        End Select
+        Main.LedGreenFlash()
+    End Event     
+End Class

@@ -1,0 +1,131 @@
+﻿// FreeFall Example for 120 module new accelerometer features
+// Requires MQTT and LIS2DH12 library
+
+// default configuration is:
+// Low Power mode, 50 Hz, 2G 
+// x,y,z accel (in g),  pitch and roll (in degrees) displayed every 10 seconds (no you can't detect yaw, need a magnetometer for that!)
+// Sleep mode enabled only when interrupts are enabled (data rate is 10Hz in sleep mode) - wake time is 5 seconds (ie accelerometer wakes up for 5 sconds when threshold is exceeded).
+// Motion detection on INT1, pin 1. (Led Green = Free Fall Detected)
+
+// N Waterton 22nd January 2017 V1.0: First Release
+
+
+Class LISDH12_Test
+    Shared accel As LIS2DH12
+    Shared pin1data As Json
+    Shared pin2data As Json
+    Shared pin1count As Integer
+    Shared pin2count As Integer
+    
+    Shared Event Boot()
+        //Lplan.SetMidPowerMode(5000)
+        MQTT.Publish("Status", "Booted")
+        pin1data = New Json
+        pin2data = New Json
+        accel = New LIS2DH12
+        If accel.online Then
+            MQTT.Publish("Status", "LIS2DH12TR Sensor Online")
+            If LIS2DH12.VERSION < 5 Then
+                MQTT.Publish("Status", "LIS2DH12 Library is out of Date, please upgrade!")
+            Else
+                'version 5 and above of library
+                'uncomment each line to test function
+                'READ THE COMMENTS! configuration is straightforward, but can get complicated fast...
+                'general format is threshold (in g), duration (in ms), interrupt number, pin number, latch interrupt (until read), axes
+                'some functions have fewer options, some more. there are convenience versions of each function, which will default common values for you.
+                'there is no error checking on values entered, you can enter silly numbers, and it will do *something* probably not what you expect though!
+                'for example, at 50Hz data rate, each duration step is 20ms. Entering duration of 10.0 will result in 0ms, entering 6000.0 will result in 2560ms.
+                accel.Setup(LIS2DH12.LOW_POWER_MODE, LIS2DH12.DATA_RATE_50HZ, LIS2DH12.SCALE_2G)
+                'Freefall config detects when all three axes fall below threshold for duration time. In freefall, all three axes = 0G
+                accel.ConfigureFreeFallInterrupt(0.35, 20.0) 'INT1 pin 1, Latched. Pin 1 activates AccelerometerInt1()
+                'accel.ConfigureFreeFallInterrupt() 'same as above
+                
+                'publish paramterers
+                Dim accelconfig As Json = accel.ReadConfiguration(0)
+                MQTT.Publish("config", accelconfig)
+                accelconfig = accel.ReadConfiguration(1)
+                MQTT.Publish("int1", accelconfig)
+                accelconfig = accel.ReadConfiguration(2)
+                MQTT.Publish("int2", accelconfig)
+                accelconfig = accel.ReadConfiguration(3)
+                MQTT.Publish("click", accelconfig)
+                accelconfig = accel.ReadConfiguration(4)
+                MQTT.Publish("misc", accelconfig)
+            End If
+        Else
+            MQTT.Publish("Status", "Accel Sensor Offline")
+        End If
+        //MQTT.use_delay = True
+    End Event
+    
+    Shared Event Publish() RaiseEvent Every 10 Seconds
+        Dim accelValues As ListOfFloat = accel.GetAccel()
+        Dim PitchRoll As ListOfFloat = accel.GetPitchRollDegrees()
+        
+        Dim jData As Json = New Json
+        jData.Add("X_Accel", accelValues(0))
+        jData.Add("Y_Accel", accelValues(1))
+        jData.Add("Z_Accel", accelValues(2))
+        jData.Add("Pitch", PitchRoll(0))
+        jData.Add("Roll", PitchRoll(1))
+        jData.Add("Pin1 Count", pin1count) 'number of interrupts generated
+        If pin1data.Count() > 0 Then
+            jData.Add("Pin1", pin1data)
+        End If
+        jData.Add("Pin2 Count", pin2count) 'number of interrupts generated
+        If pin2data.Count() > 0 Then
+            jData.Add("Pin2", pin2data)
+        End If
+        MQTT.Publish("Data", jData)
+        pin1data.Clear()
+        pin2data.Clear()
+        pin1count = 0
+        pin2count = 0
+    End Event
+    
+    Shared Event AccelerometerInt1()
+        'limit interrupts - not needed if you get duration/threshold correct
+        'Thread.Sleep(10000)
+        'Thread.ClearHardwareEvent()
+        pin1data.Clear() 'if you get too many interrupts without clearing pin1data - you will get an overflow!
+        pin1count += 1
+        
+        //MOTION/TRANSIENT Detection INT1
+        'Read Int source register To clear interrupt And get source
+        Dim Int1Source As ListOfString = accel.GetInt1Source()
+        If Int1Source.Count> 0 Then 'if we have an interrupt (of any kind, x,y or z)
+            'interrupt generated (can read the interrupt source from ListofString if you want)
+            For Each interrupt In Int1Source
+                pin1data.Add(interrupt, "Int 1")
+            Next
+            LedGreen = True
+            Thread.Sleep(3000)
+            LedGreen = False
+            
+        End If 
+        
+    End Event
+    
+    Shared Event AccelerometerInt2()
+        'limit interrupts - not needed if you get duration/threshold correct
+        'Thread.Sleep(10000)
+        'Thread.ClearHardwareEvent()
+        pin2data.Clear() 'if you get too many interrupts without clearing pin2data - you will get an overflow!
+        pin2count += 1
+        
+        //MOTION/TRANSIENT Detection INT2
+        'Read Int source register To clear interrupt And get source
+        Dim Int2Source As ListOfString = accel.GetInt2Source()
+        If Int2Source.Count> 0 Then 'if we have an interrupt (of any kind, x,y or z)
+            'interrupt generated (can read the interrupt source from ListofString if you want)
+            For Each interrupt In Int2Source
+                pin1data.Add(interrupt, "Int 2")
+            Next
+            LedRed = True
+            Thread.Sleep(3000)
+            LedRed = False
+            
+        End If        
+        
+    End Event
+End Class
