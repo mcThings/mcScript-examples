@@ -1,0 +1,41 @@
+﻿Class TMP102
+    // Function returns the temperature in degree celcius or 
+    // Float.NaN if something is wrong
+    Shared Function GetTemp() As Float
+        // Define the properties of the I2C peripheral and device address
+        Dim sensor As I2c = My.I2c0
+        sensor.Open(0x48, 250000, My.SCL, My.SDA)
+        
+        // Power up the sensor and give it some time to settle
+        My.TempSensor.Enable = True
+        Thread.Sleep(40000) // See page 13 of the datasheet
+        
+        // Read the sensor (only 2 bytes to read
+        Dim res As ListOfByte = sensor.Read(2)
+        
+        // See Tmp102 documentation how to interpret the data (page 8)
+        Dim temp As Float = Float.NaN 
+        If res <> Nothing Then
+            // Shift the partial part to the right nibble
+            Dim part As Float = res(1) >> 4
+            // Temperature partial is 1/16*n where n is between 0 and 15
+            part = part / 16
+            // Sign extend the byte to an integer
+            temp = res(0) + part
+        End If
+        
+        // power off
+        My.TempSensor.Enable = False
+        
+        Return temp
+    End Function
+    
+    Shared Function ToFarenheit(celcius As Float) As Float
+        Return (celcius * 9) / 5 + 32
+    End Function
+    
+    Shared Function ToCelcius(farenheit As Float) As Float
+        Return (farenheit - 32) * 5 / 9
+    End Function
+    
+End Class
