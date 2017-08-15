@@ -5,10 +5,12 @@
   <LastDocumentName>Blinky2.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
+      <Name>Blinky2</Name>
       <FileSpec>Blinky2.mcScript</FileSpec>
-      <Row>16</Row>
+      <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>
+  <ManualCompile>false</ManualCompile>
 </ProjectSetting>
