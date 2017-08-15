@@ -1,6 +1,5 @@
 ﻿//
 // A simple program that blinks the red LED on a device every 250ms (by default).
-// Automatic, eveent driven, and low power.
 //
 Class Blinky
     Shared Event BlinkRed() RaiseEvent Every 250 milliSeconds
