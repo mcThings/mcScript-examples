@@ -5,16 +5,28 @@
   <LastDocumentName>JsonExample.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
+      <Name>JsonExample</Name>
       <FileSpec>JsonExample.mcScript</FileSpec>
+      <Row>15</Row>
+      <Col>8</Col>
+      <BreakPointLineNumbers>
+        <int>25</int>
+      </BreakPointLineNumbers>
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>TMP102</Name>
+      <FileSpec>..\..\libraries\temperature\tmp102\TMP102.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
-      <FileSpec>..\..\libraries\temperature\tmp102\TempSensor.mcScript</FileSpec>
+      <Name>[Listing]</Name>
+      <FileSpec>JsonExample.lst</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>
+  <ManualCompile>false</ManualCompile>
 </ProjectSetting>
