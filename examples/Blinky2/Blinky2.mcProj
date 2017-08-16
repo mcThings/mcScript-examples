@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <ProjectName>Blinky2</ProjectName>
-  <DeviceType>mcMod110</DeviceType>
+  <DeviceType>mcMod120</DeviceType>
   <LastDocumentName>Blinky2.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>

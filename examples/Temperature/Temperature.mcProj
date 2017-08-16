@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <ProjectName>Temperature</ProjectName>
-  <DeviceType>mcMod110</DeviceType>
+  <DeviceType>mcMod120</DeviceType>
   <LastDocumentName>Temperature.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
       <Name>Temperature</Name>
       <FileSpec>Temperature.mcScript</FileSpec>
-      <Row>11</Row>
-      <Col>14</Col>
+      <Row>0</Row>
+      <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>

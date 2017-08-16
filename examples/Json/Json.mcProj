@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <ProjectName>Blinky</ProjectName>
+  <ProjectName>Json</ProjectName>
   <DeviceType>mcMod120</DeviceType>
-  <LastDocumentName>Blinky.mcScript</LastDocumentName>
+  <LastDocumentName>Json.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
-      <Name>Blinky</Name>
-      <FileSpec>Blinky.mcScript</FileSpec>
+      <Name>Json</Name>
+      <FileSpec>Json.mcScript</FileSpec>
+      <Row>0</Row>
+      <Col>0</Col>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>TMP102</Name>
+      <FileSpec>..\..\libraries\temperature\tmp102\TMP102.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />

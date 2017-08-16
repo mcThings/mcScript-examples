@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ProjectSetting xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <ProjectName>AnalogLightSensor</ProjectName>
-  <DeviceType>mcMod110</DeviceType>
+  <DeviceType>mcMod120</DeviceType>
   <LastDocumentName>AnalogLightSensor.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
       <Name>AnalogLightSensor</Name>
       <FileSpec>AnalogLightSensor.mcScript</FileSpec>
-      <Row>2</Row>
-      <Col>47</Col>
+      <Row>0</Row>
+      <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>

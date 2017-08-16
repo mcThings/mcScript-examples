@@ -1,20 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <ProjectName>MMA_Test</ProjectName>
-  <DeviceType>mcMod110</DeviceType>
+  <DeviceType>mcMod120</DeviceType>
   <LastDocumentName>MMA_Test.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
+      <Name>MMA_Test</Name>
       <FileSpec>MMA_Test.mcScript</FileSpec>
-      <Row>11</Row>
-      <Col>36</Col>
+      <Row>0</Row>
+      <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
+      <Name>mma8652</Name>
       <FileSpec>..\..\libraries\accelerometer\mma8652\mma8652.mcscript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>
+  <ManualCompile>false</ManualCompile>
 </ProjectSetting>
