@@ -6,14 +6,13 @@
     End Event
     
     Shared Event RecordTemperature() RaiseEvent Every 1 Seconds
-        Dim dtm As DateTime = DateTime.Now()
-        Dim tmp As Float = TempSensor.GetTemp()
+        Dim dtm As DateTime = DateTime.Now
+        Dim tmp As Float = TMP102.GetTemp()
         Dim dataPoint As TemperatureRecord = New TemperatureRecord(dtm, tmp)
         Data.Add(dataPoint)
     End Event
     
     Shared Event GatewayPresent()
-        Dim topic As String = "MySampleTopic"
         Dim attempts As Integer = 0
         
         ' Note the use of Clone here to ensure that the list we iterate over
@@ -28,12 +27,13 @@
             jData.Add("timestamp", dataPoint.Dtm)
             jData.Add("temperature", dataPoint.Tmp)
             
-            ' Attempt to send a publish, if publish is accepted move on
+            ' Attempt to send a webhook, if webhook is accepted move on
             ' otherwise wait for 10ms and try again.
             ' Note that we use an attempts variable to make sure we don't stay
             ' here forever if we lose sight of the gateway.
             attempts = 0
-            While Not Lplan.Publish2(topic, jData.ToListOfByte)
+            
+            While Not My.mcCloud.Webhook(0, jData.ToString, 10)
                 If attempts > 5 Then
                     Exit While
                 End If

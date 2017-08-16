@@ -12,15 +12,15 @@
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
-      <Name>TempSensor</Name>
-      <FileSpec>..\..\libraries\temperature\tmp102\TempSensor.mcScript</FileSpec>
+      <Name>TemperatureRecord</Name>
+      <FileSpec>TemperatureRecord.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
-      <Name>TemperatureRecord</Name>
-      <FileSpec>TemperatureRecord.mcScript</FileSpec>
+      <Name>TMP102</Name>
+      <FileSpec>..\..\libraries\temperature\tmp102\TMP102.mcScript</FileSpec>
       <Row>0</Row>
       <Col>0</Col>
       <BreakPointLineNumbers />
