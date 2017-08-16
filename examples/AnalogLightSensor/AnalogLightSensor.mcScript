@@ -1,13 +1,15 @@
-﻿Define PinMode Pin8 As AnalogInputPullUp 
-Define PinMode Pin4 As DigitalOutput
-
-Class AnalogLightSensor
+﻿Class AnalogLightSensor
+    Shared Event Boot() 
+        My.Pin8.PinMode = PinMode.AnalogInputPullUp
+        My.Pin4.PinMode = PinMode.DigitalOutput
+        
+    End Event
     Shared Event Test() RaiseEvent Every 10 Seconds 
         Dim mes As ListOfByte = New ListOfByte
-        If Pin8 > 400 Then // Compare pin with 400 mVolt to detect darkness
-            Pin4 = True
+        If My.Pin8.Voltage > 400 Then // Compare pin with 400 mVolt to detect darkness
+            My.Pin4.Set()
         Else
-            Pin4 = False
+            My.Pin4.Clear()
         End If
     End Event    
 End Class 
