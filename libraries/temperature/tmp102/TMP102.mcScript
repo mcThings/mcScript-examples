@@ -27,6 +27,8 @@
         // power off
         My.TempSensor.Enable = False
         
+        sensor.Close()
+        
         Return temp
     End Function
     
