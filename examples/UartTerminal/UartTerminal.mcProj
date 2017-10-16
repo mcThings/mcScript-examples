@@ -7,8 +7,6 @@
     <DocumentSetting>
       <Name>UartTerminal</Name>
       <FileSpec>UartTerminal.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>

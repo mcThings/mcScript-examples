@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ProjectName>Accelerometer</ProjectName>
+  <DeviceType>mcMod120</DeviceType>
+  <LastDocumentName>Accelerometer.mcScript</LastDocumentName>
+  <DocumentSettings>
+    <DocumentSetting>
+      <Name>Accelerometer*</Name>
+      <FileSpec>Accelerometer.mcScript</FileSpec>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>LIS2DH12</Name>
+      <FileSpec>..\..\libraries\accelerometer\LIS2DH12.mcscript</FileSpec>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+  </DocumentSettings>
+  <ManualCompile>false</ManualCompile>
+</ProjectSetting>
