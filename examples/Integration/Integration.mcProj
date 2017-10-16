@@ -2,7 +2,7 @@
 <ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <ProjectName>Integration</ProjectName>
   <DeviceType>mcMod120</DeviceType>
-  <LastDocumentName>Integration.mcScript</LastDocumentName>
+  <LastDocumentName>..\..\libraries\Temperature\TMP102.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
       <Name>Integration</Name>
@@ -10,8 +10,8 @@
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
-      <Name>TempSensor</Name>
-      <FileSpec>..\..\libraries\temperature\tmp102\TMP102.mcScript</FileSpec>
+      <Name>TMP102</Name>
+      <FileSpec>..\..\libraries\Temperature\TMP102.mcScript</FileSpec>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>

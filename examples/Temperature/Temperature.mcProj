@@ -7,15 +7,11 @@
     <DocumentSetting>
       <Name>Temperature</Name>
       <FileSpec>Temperature.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
       <Name>TMP102</Name>
-      <FileSpec>..\..\libraries\temperature\tmp102\TMP102.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
+      <FileSpec>..\..\libraries\Temperature\TMP102.mcScript</FileSpec>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>

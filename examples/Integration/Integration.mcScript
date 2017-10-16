@@ -13,7 +13,7 @@
         
         ' Publish the JSON to mcCloud Integration #1 in this Device's Security 
         ' Domain with a 30-second timeout.
-        Dim success As Boolean = My.mcCloud.Integrations.Publish(2, toPublish.ToString, 30)
+        Dim success As Boolean = My.mcCloud.Integrations.Publish(1, toPublish.ToString, 30)
         
         ' React to the success of the publish to the mcCloud integration. In
         ' this case, set the LEDs.
