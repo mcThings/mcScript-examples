@@ -7,15 +7,11 @@
     <DocumentSetting>
       <Name>Integration</Name>
       <FileSpec>Integration.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
       <Name>TempSensor</Name>
       <FileSpec>..\..\libraries\temperature\tmp102\TMP102.mcScript</FileSpec>
-      <Row>14</Row>
-      <Col>8</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>
