@@ -1313,13 +1313,13 @@ Class LIS2DH12
             Select orientation
                 Case INT_SRC_YL
                     If PLMode Then
-                        result = "portrate_down"
+                        result = "portrait_down"
                     Else
                         result = "left"
                     End If
                 Case INT_SRC_YH
                     If PLMode Then
-                        result = "portrate_up"
+                        result = "portrait_up"
                     Else
                         result = "right"
                     End If

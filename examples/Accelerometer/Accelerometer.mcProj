@@ -5,13 +5,13 @@
   <LastDocumentName>Accelerometer.mcScript</LastDocumentName>
   <DocumentSettings>
     <DocumentSetting>
-      <Name>Accelerometer*</Name>
+      <Name>Accelerometer</Name>
       <FileSpec>Accelerometer.mcScript</FileSpec>
       <BreakPointLineNumbers />
     </DocumentSetting>
     <DocumentSetting>
       <Name>LIS2DH12</Name>
-      <FileSpec>..\..\libraries\accelerometer\LIS2DH12.mcscript</FileSpec>
+      <FileSpec>..\..\libraries\Accelerometer\LIS2DH12.mcScript</FileSpec>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>
