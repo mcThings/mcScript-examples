@@ -7,8 +7,6 @@
     <DocumentSetting>
       <Name>Blinky2</Name>
       <FileSpec>Blinky2.mcScript</FileSpec>
-      <Row>0</Row>
-      <Col>0</Col>
       <BreakPointLineNumbers />
     </DocumentSetting>
   </DocumentSettings>
