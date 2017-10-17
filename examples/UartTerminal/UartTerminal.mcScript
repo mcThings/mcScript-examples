@@ -7,9 +7,8 @@
         
         Dim ser As Uart = My.Uart0
         ser.Open(9600, My.Pin1, My.Pin0)
+        Thread.Sleep(1000)
         ser.Write("Hello")
-        ser.Write(0x0c)
-        ser.Write(0x0a)
         ser.Close()
         
         thr = New Thread("ProcessChar")
