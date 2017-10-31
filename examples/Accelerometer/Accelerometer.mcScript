@@ -1,0 +1,27 @@
+﻿Class Accel
+    Shared dev As LIS2DH12 
+    
+    Shared Event Boot()
+        dev = New LIS2DH12(My.SCL, My.SDA, 0x19)
+        
+        'set accelerometer to cause interrupt if accelation is > 1.4Gs for longer than 5ms (any axis)
+        dev.ConfigureShockInterrupt(1.4F, 5)
+    End Event
+    
+    Shared Event AccelerometerInt1()
+        'debounce interrupt
+        Thread.Sleep(100000)
+        Dim thr As Thread = Thread.Current()
+        thr.EventFlag = False
+        
+        'Read Int source register to clear interrupt
+        If ((dev.ReadSingleByte(LIS2DH12.INT1_SRC_REG) & LIS2DH12.INT_ACTIVE) = LIS2DH12.INT_ACTIVE) Then
+            'interrupt generated
+            My.LedRed.Toggle()
+            
+        End If 
+        
+        'restart interrupt
+        dev.WriteSingleByte(LIS2DH12.INT1_CFG_REG, 0x2a)
+    End Event
+End Class 

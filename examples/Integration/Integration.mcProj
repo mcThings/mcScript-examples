@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ProjectName>Integration</ProjectName>
+  <DeviceType>mcMod120</DeviceType>
+  <LastDocumentName>..\..\libraries\Temperature\TMP102.mcScript</LastDocumentName>
+  <DocumentSettings>
+    <DocumentSetting>
+      <Name>Integration</Name>
+      <FileSpec>Integration.mcScript</FileSpec>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+    <DocumentSetting>
+      <Name>TMP102</Name>
+      <FileSpec>..\..\libraries\Temperature\TMP102.mcScript</FileSpec>
+      <BreakPointLineNumbers />
+    </DocumentSetting>
+  </DocumentSettings>
+  <ManualCompile>false</ManualCompile>
+</ProjectSetting>

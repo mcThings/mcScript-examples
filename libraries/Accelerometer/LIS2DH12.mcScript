@@ -1,0 +1,211 @@
+﻿Class LIS2DH12
+    'Constants
+    Const VERSION As Integer = 2
+    
+    'I2C constants
+    Const I2C_SPEED As Integer = 250000
+    
+    'LIS2DH12 registers
+    Const STATUS_REG_AUX_REG As Byte = 0x07
+    Const OUT_TEMP_L_REG As Byte = 0x0c
+    Const OUT_TEMP_H_REG As Byte = 0x0d
+    Const WHO_AM_I_REG As Byte = 0x0f
+    Const TEMP_CFG_REG As Byte = 0x1f
+    Const CTRL_REG1_REG As Byte = 0x20
+    Const CTRL_REG2_REG As Byte = 0x21
+    Const CTRL_REG3_REG As Byte = 0x22
+    Const CTRL_REG4_REG As Byte = 0x23
+    Const CTRL_REG5_REG As Byte = 0x24
+    Const CTRL_REG6_REG As Byte = 0x25
+    Const REF_DATA_CAP_REG As Byte = 0x26	
+    Const STATUS_REG As Byte = 0x27
+    Const OUT_X_L_REG As Byte = 0x28
+    Const OUT_X_H_REG As Byte = 0x29
+    Const OUT_Y_L_REG As Byte = 0x2a
+    Const OUT_Y_H_REG As Byte = 0x2b
+    Const OUT_Z_L_REG As Byte = 0x2c
+    Const OUT_Z_H_REG As Byte = 0x2d
+    Const FIFO_CTRL_REG As Byte = 0x2e
+    Const FIFO_SRC_REG As Byte = 0x2f
+    Const INT1_CFG_REG As Byte = 0x30
+    Const INT1_SRC_REG As Byte = 0x31
+    Const INT1_THS_REG As Byte = 0x32
+    Const INT1_DURATION_REG As Byte = 0x33
+    Const INT2_CFG_REG As Byte = 0x34
+    Const INT2_SRC_REG As Byte = 0x35
+    Const INT2_THS_REG As Byte = 0x36
+    Const INT2_DURATION_REG As Byte = 0x37
+    Const CLICK_CFG_REG As Byte = 0x38
+    Const CLICK_SRC_REG As Byte = 0x39
+    Const CLICK_THS_REG As Byte = 0x3a
+    Const TIME_LIMIT_REG As Byte = 0x3b
+    Const TIME_LATENCY_REG As Byte = 0x3c
+    Const TIME_WINDOW_REG As Byte = 0x3d
+    Const ACT_THS_REG As Byte = 0x3e
+    Const ACT_DUR_REG As Byte = 0x3f
+    
+    'Data rate constants
+    Const DATA_RATE_POWER_DOWN As Byte = 0x00
+    Const DATA_RATE_1HZ As Byte = 0x01
+    Const DATA_RATE_10HZ As Byte = 0x02
+    Const DATA_RATE_25HZ As Byte = 0x03
+    Const DATA_RATE_50HZ As Byte = 0x04
+    Const DATA_RATE_100HZ As Byte = 0x05
+    Const DATA_RATE_200HZ As Byte = 0x06
+    Const DATA_RATE_400HZ As Byte = 0x07
+    Const DATA_RATE_1620HZ_LP As Byte = 0x08
+    Const DATA_RATE_1344HZ As Byte = 0x09
+    Const DATA_RATE_MASK As Byte = 0xf0
+    
+    'Scale Constants
+    Const SCALE_2G As Byte = 0x00
+    Const SCALE_4G As Byte = 0x01
+    Const SCALE_8G As Byte = 0x02
+    Const SCALE_16G As Byte = 0x03
+    Const SCALE_MASK As Byte = 0x30
+    Const UNDEFINED As Byte = 0xff
+    
+    'Operating Mode
+    Const LOW_POWER_MODE As Byte = 0x01
+    Const NORMAL_MODE As Byte = 0x02
+    Const HIGH_RESOLUTION_MODE As Byte = 0x03
+    
+    Const LPEN_BIT As Byte = 0x08
+    Const HR_BIT As Byte = 0x08    
+    
+    'Interrupt constants
+    Const INT_CLICK_BIT As Byte = 0x80
+    Const INT_AOI1_BIT As Byte = 0x40
+    Const INT_AOI2_BIT As Byte = 0x20
+    Const INT_DRDY1_BIT As Byte = 0x10
+    Const INT_DRDY2_BIT As Byte = 0x08
+    Const INT_WTM_BIT As Byte = 0x04
+    Const INT_OVERRUN_BIT As Byte = 0x02
+    Const INT1_PIN As Byte = 0x01
+    Const INT2_PIN As Byte = 0x02
+    
+    Const INT_ACTIVE As Byte = 0x40
+    Const INT_SRC_ZH As Byte = 0x20
+    Const INT_SRC_ZL As Byte = 0x10
+    Const INT_SRC_YH As Byte = 0x08
+    Const INT_SRC_YL As Byte = 0x04
+    Const INT_SRC_XH As Byte = 0x02
+    Const INT_SRC_XL As Byte = 0x01
+    
+    Const LOW_TRIGGER_THRESHOLD As Float = 1
+    Const HIGH_TRIGGER_THRESHOLD As Float = 23.622F
+    Const LSB_RESOLUTION_THRESHOLD As Float = 0.186F
+    
+    Const LOW_DURATION_MS As Float = 0
+    Const HIGH_DURATION_MS As Float = 635
+    Const DURATION_RESOLUTION As Float = 5
+    
+    'Axis constants
+    Const X_AXIS As Byte = 0x01
+    Const Y_AXIS As Byte = 0x02
+    Const Z_AXIS As Byte = 0x03
+    
+    'Private variables
+    Private _dev As I2c
+    Private _scl As Pin
+    Private _sda As Pin
+    Private _adr As Byte
+    Private _scale As Byte = UNDEFINED
+    Private _operatingMode As Byte = UNDEFINED
+    Private _dataRate As Byte = UNDEFINED
+    
+    Public Sub New(scl As Pin, sda As Pin, address As Byte)
+        _scl = scl
+        _sda = sda
+        _adr = address
+        
+        _dev = My.I2c0
+        
+        My.Accelerometer.Enable = False
+    End Sub
+    
+    
+    Public Function ConfigureShockInterrupt(threshold As Float, duration As Float) As Boolean
+        Dim result As Boolean = False
+        Dim thresholdByte As Byte = 0
+        Dim durationByte As Byte = 0
+        
+        If ((threshold >= LOW_TRIGGER_THRESHOLD And threshold <= HIGH_TRIGGER_THRESHOLD)) And ((duration >= LOW_DURATION_MS And duration <= HIGH_DURATION_MS)) Then 
+            'Convert threshold to 7 bit byte
+            threshold = threshold / LSB_RESOLUTION_THRESHOLD
+            thresholdByte = threshold.ToByte
+            duration = duration / DURATION_RESOLUTION
+            durationByte = duration.ToByte
+            
+            'Power cycle accelerometer
+            My.Accelerometer.Enable = False
+            'delay 30ms
+            Thread.Delay(30000)
+            My.Accelerometer.Enable = True
+            'delay 20ms to accelerometer to boot
+            Thread.Delay(20000)
+            
+            'Set registers
+            'Set to 200Hz, Low Power Mode, All axis enabled
+            WriteSingleByte(CTRL_REG1_REG, 0x6f)
+            'No filter
+            WriteSingleByte(CTRL_REG2_REG, 0x00)
+            'AOI interrupt on INT1 Pin
+            WriteSingleByte(CTRL_REG3_REG, 0x40)
+            '8 bit resolution(low power mode), +/- 16G Scale
+            WriteSingleByte(CTRL_REG4_REG, 0x30)
+            'Latch Interrupt (cleared by reading INT1_SRC register)
+            WriteSingleByte(CTRL_REG5_REG, 0x08)
+            'Set interrupt as active low on INT1 pin
+            WriteSingleByte(CTRL_REG6_REG, 0x02)
+            'Set Threshold 0.0 ~ 23.622 Gs
+            WriteSingleByte(INT1_THS_REG, thresholdByte)
+            'Set Duration (currently set to 0, causes interrupt immediately, once threshold exceeded
+            WriteSingleByte(INT1_DURATION_REG, durationByte)
+            'Configure device to generate interrupt on X, Y, OR Z high event
+            WriteSingleByte(INT1_CFG_REG, 0x2a)
+            
+            'delay 5ms for the accelerometer to boot
+            Thread.Delay(5000)
+            
+            result = True
+        Else
+            'incorrect range, return error
+            result = False
+        End If
+        
+    End Function
+    
+    Public Function WriteSingleByte(reg_addr As Byte, data_byte As Byte) As Boolean
+        Dim result As Boolean = False
+        Dim buf As ListOfByte = New ListOfByte()
+        
+        buf.Add(reg_addr)
+        buf.Add(data_byte) 
+        
+        _dev.Open(_adr, I2C_SPEED, _scl, _sda)
+        result = _dev.Write(buf, True)
+        _dev.Close()
+        
+        Return result
+    End Function
+    
+    Public Function ReadSingleByte(reg_addr As Byte) As Byte
+        Dim addr As ListOfByte = New ListOfByte()
+        Dim data As ListOfByte
+        
+        addr.Add(reg_addr)
+        
+        _dev.Open(_adr, I2C_SPEED, _scl, _sda)
+        _dev.Write(addr, False)
+        data = _dev.Read(1, True)
+        _dev.Close()
+        
+        Return data(0)
+    End Function 
+    
+    Public Function GetVersion() As Integer
+        Return VERSION
+    End Function
+    
+End Class

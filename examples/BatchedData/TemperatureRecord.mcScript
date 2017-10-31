@@ -1,8 +1,0 @@
-﻿Class TemperatureRecord 
-    Public Dtm As DateTime
-    Public Tmp As Float
-    Public Sub New(_dtm As DateTime, _tmp As Float) 
-        Dtm = _dtm
-        Tmp = _tmp
-    End Sub
-End Class

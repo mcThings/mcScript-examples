@@ -1,22 +1,39 @@
-﻿Define PinMode Pin9 As DigitalInput
-Define PinMode Pin10 As DigitalOutput
-
-Class UartTerminal
-    Shared ser As Uart
+﻿Class UartTerminal
+    Shared thr As Thread
+    
     Shared Event Boot()
-        ser = Uart.Create(9600, Pin.Pin10, Pin.Pin9)
+        My.Pin0.PinMode = PinMode.DigitalInput
+        My.Pin1.PinMode = PinMode.DigitalOutput
+        
+        Dim ser As Uart = My.Uart0
+        ser.Open(9600, My.Pin1, My.Pin0)
+        Thread.Sleep(1000)
         ser.Write("Hello")
-        ser.Write(0x0c)
-        ser.Write(0x0a)
+        ser.Close()
+        
+        thr = New Thread("ProcessChar")
+        Dim del As ThreadStartDelegate = AddressOf UartTerminal.ProcessChar
+        thr.Start(del, Nothing)
+        
     End Event
-    Shared Event Uart0Receive()
-        Dim chr As Integer = ser.Read
-        While chr >= 0
-            If chr = 13 Then ' CR echo as CR/LF
-                ser.Write(10)
-            End If
-            ser.Write(chr.ToByte)
-            chr = ser.Read()
+    
+    Shared Sub ProcessChar(o As Object)
+        Dim ser As Uart = My.Uart0
+        ser.Open(9600, My.Pin1, My.Pin0)
+        While True
+            Thread.Suspend()
+            Dim chr As Integer = ser.Read()
+            While chr >= 0
+                If chr = 13 Then ' CR echo as CR/LF
+                    ser.Write(10)
+                End If
+                ser.Write(chr.ToByte)
+                chr = ser.Read()
+            End While
         End While
+    End Sub
+    
+    Shared Event Uart0Receive()
+        thr.Resume()
     End Event
 End Class 

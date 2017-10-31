@@ -1,16 +1,16 @@
 ﻿Class Temperature
     Shared Event GetTemp() RaiseEvent Every 1 Minutes
-        LedGreen = True
+        My.LedGreen.Set()
         
-        Dim TempC As Float = TempSensor.GetTemp
-        Dim TempF As Float = TempSensor.ToFarenheit(TempC)
+        Dim TempC As Float = TMP102.GetTemp()
+        Dim TempF As Float = TMP102.ToFarenheit(TempC)
         
-        If TempC > 25.0 Then
-            LedRed = True
+        If TempC > 25 Then
+            My.LedRed.Set()
         Else
-            LedRed = False
+            My.LedRed.Clear()
         End If
         
-        LedGreen = False
+        My.LedGreen.Clear()
     End Event
 End Class 

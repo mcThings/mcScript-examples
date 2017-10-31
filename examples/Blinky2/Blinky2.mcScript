@@ -1,16 +1,15 @@
-﻿//
-// This program blinks the two led's for a short time (100mSec) out of
-// sync with each other. Good example of multi-threading with mcScript
-//
-Class Demo 
+﻿' Blink the device's red and green LED's out of step with each other.
+' Each of these events occurs on their own thread, so calling Thread.Sleep()
+' will only pause the respective event.
+Class Blinky2 
     Shared Event BlinkGreen() RaiseEvent Every 2000 milliSeconds
-        LedGreen = True
-        Thread.Sleep(100000)
-        LedGreen = False
+        My.LedGreen.Set()
+        Thread.Sleep(1000) ' Pause for 1000 microseconds.
+        My.LedGreen.Clear()
     End Event
-    Shared Event BlinkRed() RaiseEvent Every 1500 milliSeconds
-        LedRed = True
-        Thread.Sleep(100000)
-        LedRed = False
+    Shared Event BlinkRed() RaiseEvent Every 1700 milliSeconds
+        My.LedRed.Set()
+        Thread.Sleep(1000)
+        My.LedRed.Clear()
     End Event
 End Class
