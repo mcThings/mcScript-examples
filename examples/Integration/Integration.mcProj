@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <ProjectName>Integration</ProjectName>
-  <DeviceType>mcMod120</DeviceType>
-  <LastDocumentName>..\..\libraries\Temperature\TMP102.mcScript</LastDocumentName>
+<ProjectSetting xmlns:i="http://www.w3.org/2001/XMLSchema-instance" z:Id="i1" xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" xmlns="http://schemas.mcthings.com/mcstudio">
+  <AutoCompileDisabled>false</AutoCompileDisabled>
+  <DeviceType>Mod120</DeviceType>
   <DocumentSettings>
-    <DocumentSetting>
-      <Name>Integration</Name>
+    <DocumentSetting z:Id="i2">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
       <FileSpec>Integration.mcScript</FileSpec>
-      <BreakPointLineNumbers />
+      <Name>Integration</Name>
     </DocumentSetting>
-    <DocumentSetting>
-      <Name>TMP102</Name>
+    <DocumentSetting z:Id="i3">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
       <FileSpec>..\..\libraries\Temperature\TMP102.mcScript</FileSpec>
-      <BreakPointLineNumbers />
+      <Name>TMP102</Name>
     </DocumentSetting>
   </DocumentSettings>
-  <ManualCompile>false</ManualCompile>
+  <LastDocumentName>Integration.mcScript</LastDocumentName>
+  <ProjectName>Integration</ProjectName>
 </ProjectSetting>
