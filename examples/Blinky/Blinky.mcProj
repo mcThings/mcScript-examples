@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ProjectSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <ProjectName>Blinky</ProjectName>
-  <DeviceType>mcMod120</DeviceType>
-  <LastDocumentName>Blinky.mcScript</LastDocumentName>
+<ProjectSetting xmlns:i="http://www.w3.org/2001/XMLSchema-instance" z:Id="i1" xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" xmlns="http://schemas.mcthings.com/mcstudio">
+  <AutoCompileDisabled>false</AutoCompileDisabled>
+  <DeviceType>Mod120</DeviceType>
   <DocumentSettings>
-    <DocumentSetting>
-      <Name>Blinky</Name>
+    <DocumentSetting z:Id="i2">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
       <FileSpec>Blinky.mcScript</FileSpec>
-      <BreakPointLineNumbers />
+      <Name>Blinky</Name>
     </DocumentSetting>
   </DocumentSettings>
-  <ManualCompile>false</ManualCompile>
+  <LastDocumentName>Blinky.mcScript</LastDocumentName>
+  <ProjectName>Blinky</ProjectName>
 </ProjectSetting>
