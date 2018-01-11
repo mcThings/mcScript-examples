@@ -21,7 +21,7 @@
             // Temperature partial is 1/16*n where n is between 0 and 15
             part = part / 16
             // Sign extend the byte to an integer
-            temp = res(0) + part
+            temp = res(0).SignExtend + part
         End If
         
         // power off
