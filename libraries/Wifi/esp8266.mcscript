@@ -1,0 +1,163 @@
+﻿Class ESP8266
+    
+    Private _uartTx As Pin
+    Private _uartRx As Pin 
+    Private _WifiPwr As Pin
+    Private _WifinRst As Pin
+    Private _WifiEn As Pin
+    Private _uartDev As Uart 
+    Private _buf As ListOfByte 
+    
+    Public Sub New(uartTx As Pin, uartRx As Pin, wifiPwr As Pin, wifinRst As Pin, wifiEn As Pin)
+        _uartTx = uartTx
+        _uartRx = uartRx  
+        _WifiPwr = wifiPwr
+        _WifinRst = wifinRst
+        _WifiEn = wifiEn
+    End Sub
+    
+    Public Sub Start()
+        _uartDev = My.Uart0
+        _buf = New ListOfByte()
+        Disable()
+    End Sub
+    
+    Public Sub UartReceive()
+        Dim chr As Integer = _uartDev.Read()
+        While chr >= 0
+            _buf.AddByte(chr.ToByte)
+            chr = _uartDev.Read()
+        End While
+    End Sub
+    
+    Public Function FactoryReset() As Boolean
+        Dim ReturnVal As Boolean = True
+        _uartDev.Open(115200, _uartTx, _uartRx)
+        Enable()
+        
+        _buf.Clear()
+        _uartDev.Write("AT+RESTORE\x0D\x0A")
+        If Not WaitForResponse(1000) Then
+            ReturnVal = False
+        End If
+        _uartDev.Close()
+        Disable()
+        
+        Return ReturnVal
+    End Function
+    
+    Public Function GetListOfAps() As ListOfObject
+        _uartDev.Open(115200, _uartTx, _uartRx)
+        Enable()
+        _buf.Clear()
+        _uartDev.Write("AT+UART_CUR=9600,8,1,0,0\x0D\x0A")
+        If Not WaitForResponse(100) Then
+            _uartDev.Close()
+            Disable()
+            Return Nothing
+        End If
+        _uartDev.Close()
+        _uartDev.Open(9600, _uartTx, _uartRx)
+        
+        _buf.Clear()
+        _uartDev.Write("ATE0\x0D\x0A")
+        
+        If Not WaitForResponse(500) Then
+            _uartDev.Close()
+            Disable()
+            Return Nothing
+        End If
+        _buf.Clear()
+        _uartDev.Write("AT+CWMODE_CUR=1\x0D\x0A")
+        If Not WaitForResponse(500) Then
+            _uartDev.Close()
+            Disable()
+            Return Nothing
+        End If
+        
+        _buf.Clear()
+        _uartDev.Write("AT+CWLAPOPT=1,12\x0D\x0A")
+        If Not WaitForResponse(500) Then
+            _uartDev.Close()
+            Disable()
+            Return Nothing
+        End If
+        
+        _buf.Clear()
+        _uartDev.Write("AT+CWLAP\x0D\x0A")
+        If Not WaitForResponse(25000) Then
+            _uartDev.Close()
+            Disable()
+            Return Nothing
+        Else
+            _uartDev.Close()
+            Disable()
+            Return ParseAndCreateAccessPoints(_buf.ToString)
+        End If
+    End Function
+    
+    Public Sub Enable()
+        _WifiPwr.Set()
+        _WifiEn.Set()
+        Thread.Sleep(10000)
+        _WifinRst.Set()
+        Thread.Sleep(750000)
+    End Sub
+    
+    Public Sub Disable()
+        _WifiPwr.Clear()
+        _WifiEn.Clear()
+        _WifinRst.Clear()
+    End Sub
+    
+    Private Function WaitForResponse(try As Integer) As Boolean
+        While try > 0
+            If _buf.Count >= 4 Then 'OK +CR+LF
+                If _buf(_buf.Count - 4) = 0x4f And _buf(_buf.Count - 3) = 0x4b And _buf(_buf.Count - 2) = 0x0d And _buf(_buf.Count - 1) = 0x0a Then
+                    Return True
+                End If
+            ElseIf _buf.Count >= 6 Then 'ERROR +CR+LF
+                If _buf(_buf.Count - 6) = 0x45 And _buf(_buf.Count - 5) = 0x52 And _buf(_buf.Count - 4) = 0x52 And _buf(_buf.Count - 3) = 0x4f And _buf(_buf.Count - 2) = 0x52 And _buf(_buf.Count - 2) = 0x0d And _buf(_buf.Count - 1) = 0x0a Then
+                    Return False
+                End If
+            End If 
+            try -= 1
+            Thread.Sleep(100)
+        End While
+        Return False
+    End Function 
+    
+    Private Function ParseAndCreateAccessPoints(str As String) As ListOfObject
+        Dim index As Integer = str.IndexOf("+CWLAP:(", 0)
+        Dim apList As ListOfObject = New ListOfObject()
+        While index >= 0
+            Dim rssiIndex As Integer = index + 8
+            Dim macIndex As Integer = str.IndexOf(",\x22", rssiIndex) + 2
+            Dim rssiString As String = str.SubString(rssiIndex, macIndex - rssiIndex - 2)
+            Dim rssi As Integer
+            Integer.TryConvert(rssiString, 10, rssi)
+            Dim mac As ListOfByte = New ListOfByte()
+            'For i As Integer = 0 To 5
+            For i = 0 To 5
+                Dim bStr As String = "0x" + str.SubString(macIndex + (i * 3), 2)
+                Dim b As Byte = 0
+                Byte.TryConvert(bStr, 16, b)
+                mac.Add(b)
+            Next
+            Dim apObj As AccessPoint = New AccessPoint(rssi, mac)
+            apList.Add(apObj)
+            index = str.IndexOf("+CWLAP:(", index + 8)
+        End While
+        Return apList
+    End Function    
+End Class
+
+Class AccessPoint 
+    Public Rssi As Integer
+    Public MacAddress As ListOfByte
+    
+    Public Sub New(rssiVal As Integer, mac As ListOfByte)
+        Rssi = rssiVal
+        MacAddress = mac
+    End Sub
+End Class
