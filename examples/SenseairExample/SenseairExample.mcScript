@@ -1,0 +1,16 @@
+﻿'  Connect +5V to S8 G+
+'  Connect GND to S8 G0
+'  Connect Pin0 TX to S8 UART_RxD *
+'  Connect Pin1 RX to S8 UART_TxD *
+'  
+'  Make sure that mcModule and S8 share GND
+'  * Use a Level Shifter between mcModule and S8
+
+Define PinMode Pin0 As DigitalOutput //TX
+Define PinMode Pin1 As DigitalInput //RX
+
+Class SenseairExample
+    Shared Event read() RaiseEvent Every 1 Minutes
+        Dim ppm As Integer = S8.readCO2(Pin.Pin0, Pin.Pin1)
+    End Event
+End Class 
